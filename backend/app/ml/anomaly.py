@@ -84,6 +84,7 @@ def confidence_from_score(score: float, detector: str) -> float:
     magnitude = abs(score)
     return round(min(0.99, magnitude / (magnitude + scale)), 3)
 
+
 #: Human-facing units per signal, used when rendering explanations.
 _UNITS = {
     "latency": "ms",
