@@ -1,0 +1,17 @@
+# Normalise line endings. Without this, a Windows checkout hands CRLF files to
+# the Linux containers, which breaks anything the shell has to interpret.
+* text=auto eol=lf
+
+# Binary assets must never be touched.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.gz binary
+*.woff binary
+*.woff2 binary
+
+# Generated lockfiles: keep them in the diff but out of language stats.
+package-lock.json linguist-generated=true
+uv.lock          linguist-generated=true

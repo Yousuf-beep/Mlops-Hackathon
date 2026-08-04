@@ -1,0 +1,90 @@
+# PulseGrid local stack: PostgreSQL + API + a synthetic upstream to monitor.
+#
+#   cp .env.example .env && docker compose up --build
+#
+# The image tag for PostgreSQL is pinned to a specific minor line on purpose —
+# `latest` would silently change the server version between developer machines
+# and CI, and time-series index behaviour is exactly the kind of thing that
+# should not drift underneath us.
+
+name: pulsegrid
+
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: pulsegrid-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-pulsegrid}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pulsegrid_dev_password}
+      POSTGRES_DB: ${POSTGRES_DB:-pulsegrid}
+      # Fail fast on an unset password rather than starting a trust-auth server.
+      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-pulsegrid} -d ${POSTGRES_DB:-pulsegrid}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: pulsegrid-api:dev
+    container_name: pulsegrid-api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      # Inside the compose network the database is reachable as `db`, which
+      # overrides whatever localhost URL .env carries for host-side tooling.
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-pulsegrid}:${POSTGRES_PASSWORD:-pulsegrid_dev_password}@db:5432/${POSTGRES_DB:-pulsegrid}
+      DEMO_TARGET_URL: http://demo-target:8001
+    # Migrations run before the server binds, so the API never serves requests
+    # against a schema it does not expect.
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    ports:
+      - "8000:8000"
+    volumes:
+      # Bind-mount for hot reload. The virtualenv lives at /opt/venv, outside
+      # this mount, so it survives.
+      - ./backend:/app
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8000/health', timeout=4)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  demo-target:
+    # Reuses the backend image — one build, one thing to push. It only ever
+    # runs a different entrypoint module.
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: pulsegrid-api:dev
+    container_name: pulsegrid-demo-target
+    restart: unless-stopped
+    command: ["uvicorn", "app.demo_target:app", "--host", "0.0.0.0", "--port", "8001"]
+    ports:
+      - "8001:8001"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8001/health', timeout=4)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+volumes:
+  pgdata:
+    name: pulsegrid-pgdata

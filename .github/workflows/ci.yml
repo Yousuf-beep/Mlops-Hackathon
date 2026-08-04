@@ -1,0 +1,188 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# A newer push to the same ref cancels the older run — hackathon CI minutes are
+# better spent on the current commit than on a superseded one.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Install dev dependencies
+        working-directory: backend
+        run: |
+          uv venv
+          uv pip install -r pyproject.toml --group dev
+
+      - name: ruff check
+        working-directory: backend
+        run: uv run ruff check .
+
+      - name: ruff format --check
+        working-directory: backend
+        run: uv run ruff format --check .
+
+      # scripts/ lives outside backend/ but shares its ruff configuration, so
+      # there is exactly one source of lint truth in the repository.
+      - name: ruff check (scripts)
+        run: |
+          cd backend
+          uv run ruff check --config pyproject.toml ../scripts
+          uv run ruff format --check --config pyproject.toml ../scripts
+
+  test:
+    name: Test (pytest)
+    runs-on: ubuntu-latest
+    # Phase-1 tests run against SQLite in-memory rather than a PostgreSQL
+    # service container. Everything under test here (auth, registry CRUD,
+    # routing, SSE framing) is engine-agnostic SQL, so a container would add
+    # ~40s of startup for no extra coverage. The one PostgreSQL-specific
+    # artefact — the BRIN index — is created by the Alembic migration and is
+    # verified by the `migrate` job below against a real postgres:17-alpine.
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        working-directory: backend
+        run: |
+          uv venv
+          uv pip install -r pyproject.toml --group dev
+
+      - name: pytest
+        working-directory: backend
+        run: uv run pytest
+
+  migrate:
+    name: Migrations (real PostgreSQL)
+    runs-on: ubuntu-latest
+    # Proves `alembic upgrade head` applies cleanly on the pinned server and
+    # that the BRIN + composite indexes really exist afterwards.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: pulsegrid
+          POSTGRES_PASSWORD: pulsegrid_ci_password
+          POSTGRES_DB: pulsegrid
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U pulsegrid"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql+psycopg://pulsegrid:pulsegrid_ci_password@localhost:5432/pulsegrid
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        working-directory: backend
+        run: |
+          uv venv
+          uv pip install -r pyproject.toml --group dev
+
+      - name: alembic upgrade head
+        working-directory: backend
+        run: uv run alembic upgrade head
+
+      - name: Assert the index strategy is in place
+        run: |
+          PGPASSWORD=pulsegrid_ci_password psql -h localhost -U pulsegrid -d pulsegrid \
+            -c "\d request_log"
+          PGPASSWORD=pulsegrid_ci_password psql -h localhost -U pulsegrid -d pulsegrid -tAc \
+            "SELECT indexname FROM pg_indexes WHERE tablename='request_log';" | sort > got.txt
+          cat got.txt
+          grep -qx 'ix_request_log_time_brin' got.txt
+          grep -qx 'ix_request_log_api_id_time' got.txt
+
+      - name: Assert models and migration have not drifted
+        working-directory: backend
+        # An empty autogenerate diff means the hand-written migration still
+        # matches models.py — the classic way these two silently diverge.
+        run: |
+          uv run alembic check
+
+  docker:
+    name: Build and publish image
+    runs-on: ubuntu-latest
+    needs: [lint, test, migrate]
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Registry login and push only happen on main; pull requests build the
+      # image to prove the Dockerfile works, but publish nothing.
+      - name: Log in to GHCR
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Derive image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=sha,format=long
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build (and push on main)
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
