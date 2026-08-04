@@ -404,10 +404,9 @@ pull request to `main`, with in-progress runs cancelled when superseded.
 | **lint** | `ruff check .` and `ruff format --check .` |
 | **test** | `pytest` against SQLite in-memory |
 | **migrate** | Spins up a real `postgres:17-alpine` service, runs `alembic upgrade head`, asserts `ix_request_log_time_brin` **and** `ix_request_log_api_id_time` exist, then runs `alembic check` to prove models and migrations have not drifted |
-| **docker** | Needs all three. Builds the backend image with Buildx + GHA layer cache. On **push to `main` only**, logs in with `GITHUB_TOKEN` and pushes to `ghcr.io/<owner>/<repo>` tagged with the commit `sha` and `latest`. Pull requests build but publish nothing. |
+| **docker** | Needs all three. Builds the backend image with Buildx + GHA layer cache. On **push to `main` only**, logs in with `GITHUB_TOKEN` and pushes to `ghcr.io/yousuf-beep/mlops-hackathon` tagged with the commit `sha` and `latest`. Pull requests build but publish nothing. |
 
-> Replace `Yousuf-beep/Mlops-Hackathon` in the badge URL at the top of this file once the
-> repository is pushed to GitHub.
+Published images: <https://github.com/Yousuf-beep/Mlops-Hackathon/pkgs/container/Mlops-Hackathon>
 
 ---
 
