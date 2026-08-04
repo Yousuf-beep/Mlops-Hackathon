@@ -1,0 +1,48 @@
+# nginx serves the built dashboard and reverse-proxies the API onto the same
+# origin. `${API_UPSTREAM}` is substituted at container start by the nginx
+# image's own envsubst entrypoint, so one image works in compose and in
+# Kubernetes without a rebuild.
+server {
+    listen       8080;
+    server_name  _;
+
+    root  /usr/share/nginx/html;
+    index index.html;
+
+    # Hashed asset filenames are immutable; index.html must never be cached or a
+    # deploy leaves browsers pointing at assets that no longer exist.
+    location /assets/ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
+    location = /index.html {
+        add_header Cache-Control "no-store";
+    }
+
+    # --- API passthrough ---------------------------------------------------
+    # One origin for the app and the API: no CORS preflight, and no absolute
+    # backend URL compiled into the bundle.
+    location ~ ^/(v1|proxy|health|docs|redoc|openapi\.json) {
+        proxy_pass         ${API_UPSTREAM};
+        proxy_http_version 1.1;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+
+        # Server-Sent Events die behind a buffering proxy: nginx would hold
+        # frames back until its buffer filled and the dashboard would look
+        # frozen. Buffering off, no chunk rewriting, and a read timeout long
+        # enough that an idle stream is not reaped between heartbeats.
+        proxy_buffering    off;
+        proxy_cache        off;
+        chunked_transfer_encoding off;
+        proxy_read_timeout 1h;
+    }
+
+    # Single-page app: unknown paths are client-side routes, not 404s.
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}

@@ -1,0 +1,33 @@
+# Kustomize rather than Helm: the only thing that genuinely varies between
+# environments is the image tag, and `images:` expresses that without a values
+# file or a template language.
+#
+#   kubectl apply -k k8s/
+#   kubectl kustomize k8s/ | kubectl diff -f -
+#
+# To deploy a specific build:
+#   kustomize edit set image pulsegrid-api=ghcr.io/<org>/pulsegrid-api:<sha>
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: pulsegrid
+
+resources:
+  - 00-namespace.yaml
+  - 01-config.yaml
+  - 10-postgres.yaml
+  - 20-api.yaml
+  - 30-demo-target.yaml
+  - 40-web.yaml
+  - 50-ingress.yaml
+  - 60-hpa.yaml
+
+commonLabels:
+  app.kubernetes.io/name: pulsegrid
+  app.kubernetes.io/part-of: pulsegrid
+
+images:
+  - name: pulsegrid-api
+    newTag: dev
+  - name: pulsegrid-web
+    newTag: dev

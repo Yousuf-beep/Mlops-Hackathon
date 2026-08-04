@@ -85,6 +85,25 @@ services:
       retries: 5
       start_period: 15s
 
+  web:
+    # The dashboard: static bundle on nginx, which also reverse-proxies /v1 to
+    # the API. Serving both from one origin means the browser never makes a
+    # cross-origin request, so CORS never enters the picture and the SSE stream
+    # passes through unbuffered.
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    image: pulsegrid-web:dev
+    container_name: pulsegrid-web
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_started
+    environment:
+      API_UPSTREAM: http://api:8000
+    ports:
+      - "5173:8080"
+
 volumes:
   pgdata:
     name: pulsegrid-pgdata

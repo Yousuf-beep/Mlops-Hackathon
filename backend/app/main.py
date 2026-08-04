@@ -17,8 +17,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlmodel import Session
 
 from app import __version__
+from app.bootstrap import bootstrap
 from app.config import settings
-from app.database import check_connection, get_session
+from app.database import check_connection, engine, get_session
 from app.jobs.scheduler import shutdown_scheduler, start_scheduler
 from app.routers import analytics, auth, ingest, ml, registry, stream
 from app.schemas import HealthResponse
@@ -34,8 +35,10 @@ DESCRIPTION = """
 turns their traffic into Golden-Signal analytics, ML-detected anomalies and
 traffic forecasts.
 
-Routes marked *(phase N)* are declared but not yet implemented and return
-`501 {"detail": "not implemented: <name>"}`.
+Collection runs through `/proxy/{slug}/...` (transparent reverse proxy),
+`POST /v1/ingest` (SDK push) and an active prober. Everything the dashboard
+reads comes from the pre-aggregated `metric_rollup` table, and `/v1/stream`
+pushes the same numbers live over Server-Sent Events.
 """
 
 
@@ -43,8 +46,9 @@ Routes marked *(phase N)* are declared but not yet implemented and return
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Manage startup and shutdown of process-wide resources.
 
-    Starts APScheduler on the way up and stops it cleanly on the way down so a
-    container restart never leaves a job mid-flight.
+    Provisions demo data (when enabled), starts APScheduler on the way up and
+    stops it cleanly on the way down so a container restart never leaves a job
+    mid-flight.
 
     Args:
         app: The application being started.
@@ -53,6 +57,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         None: Control returns to the server for the lifetime of the app.
     """
     logger.info("PulseGrid %s starting (env=%s)", __version__, settings.ENV)
+    with Session(engine) as session:
+        bootstrap(session)
     start_scheduler()
     try:
         yield

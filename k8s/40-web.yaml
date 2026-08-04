@@ -1,0 +1,76 @@
+# The dashboard: static bundle on nginx, which also reverse-proxies /v1 onto the
+# same origin. The browser therefore makes only same-origin requests — no CORS,
+# and no backend URL compiled into the bundle.
+apiVersion: v1
+kind: Service
+metadata:
+  name: pulsegrid-web
+  namespace: pulsegrid
+  labels:
+    app.kubernetes.io/name: pulsegrid
+    app.kubernetes.io/component: web
+spec:
+  selector:
+    app.kubernetes.io/component: web
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pulsegrid-web
+  namespace: pulsegrid
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: web
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: pulsegrid
+        app.kubernetes.io/component: web
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+      containers:
+        - name: web
+          image: pulsegrid-web:dev
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            # Substituted into the nginx template at container start.
+            - name: API_UPSTREAM
+              value: http://pulsegrid-api:8000
+          readinessProbe:
+            httpGet: { path: /index.html, port: http }
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /index.html, port: http }
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            # The nginx entrypoint renders the config template and nginx keeps
+            # temp files under /tmp, so the image needs writable scratch space
+            # even though nothing else on the filesystem should be writable.
+            - name: nginx-tmp
+              mountPath: /tmp
+            - name: nginx-conf
+              mountPath: /etc/nginx/conf.d
+          resources:
+            requests: { cpu: "20m", memory: "48Mi" }
+            limits: { cpu: "200m", memory: "128Mi" }
+      volumes:
+        - name: nginx-tmp
+          emptyDir: {}
+        - name: nginx-conf
+          emptyDir: {}

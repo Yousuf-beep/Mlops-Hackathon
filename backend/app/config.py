@@ -27,6 +27,20 @@ class Settings(BaseSettings):
         HEARTBEAT_INTERVAL_SECONDS: Period of the scheduler heartbeat job.
         SSE_HEARTBEAT_SECONDS: Period of the ``/v1/stream`` heartbeat event.
         DEMO_TARGET_URL: Base URL of the bundled demo upstream service.
+        DEMO_AUTOSEED: Register the demo upstream's endpoints on first boot so
+            a fresh stack shows live data without any manual setup.
+        DEMO_ADMIN_EMAIL: Login created by the autoseeder.
+        DEMO_ADMIN_PASSWORD: Password for that login.
+        PROXY_TIMEOUT_SECONDS: Upstream timeout used by the reverse proxy.
+        ROLLUP_INTERVAL_SECONDS: Period of the rollup job.
+        ROLLUP_LOOKBACK_MINUTES: Trailing window the rollup job re-aggregates
+            on every run, so late-arriving rows are still picked up.
+        PROBE_INTERVAL_SECONDS: Period of the active prober.
+        PROBE_TIMEOUT_SECONDS: Per-probe upstream timeout.
+        ANOMALY_INTERVAL_SECONDS: Period of the anomaly-detection job.
+        ANOMALY_WINDOW_MINUTES: Rollup window each anomaly run scores.
+        FORECAST_INTERVAL_SECONDS: Period of the forecast refit job.
+        FORECAST_HORIZON_MINUTES: How far ahead each refit predicts.
     """
 
     model_config = SettingsConfigDict(
@@ -52,8 +66,25 @@ class Settings(BaseSettings):
     HEARTBEAT_INTERVAL_SECONDS: int = 60
     SSE_HEARTBEAT_SECONDS: int = 5
 
-    # --- phase-2 upstreams --------------------------------------------------
+    # --- collection (phase 2) -----------------------------------------------
     DEMO_TARGET_URL: str = "http://demo-target:8001"
+    DEMO_AUTOSEED: bool = True
+    DEMO_ADMIN_EMAIL: str = "admin@pulsegrid.dev"
+    DEMO_ADMIN_PASSWORD: str = "pulsegrid-demo"
+
+    PROXY_TIMEOUT_SECONDS: float = 15.0
+
+    ROLLUP_INTERVAL_SECONDS: int = 30
+    ROLLUP_LOOKBACK_MINUTES: int = 5
+
+    PROBE_INTERVAL_SECONDS: int = 15
+    PROBE_TIMEOUT_SECONDS: float = 10.0
+
+    # --- ml (phase 3) --------------------------------------------------------
+    ANOMALY_INTERVAL_SECONDS: int = 60
+    ANOMALY_WINDOW_MINUTES: int = 120
+    FORECAST_INTERVAL_SECONDS: int = 300
+    FORECAST_HORIZON_MINUTES: int = 60
 
 
 @lru_cache(maxsize=1)

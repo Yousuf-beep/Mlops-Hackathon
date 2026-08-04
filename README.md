@@ -14,11 +14,12 @@ Golden-Signal analytics (latency, traffic, errors, saturation), detects
 anomalies with ML and explains them in plain English, and forecasts traffic —
 all on a single PostgreSQL instance and a single FastAPI process.
 
-> **Status: Phase 1 (skeleton) complete.** The schema, migrations, auth, API
-> registry, SSE plumbing, demo upstream, Docker stack and CI pipeline are
-> built and verified. Analytics, proxying and ML are declared in OpenAPI and
-> return `501 {"detail": "not implemented: <name>"}` until their phase lands.
-> See the [API overview](#api-overview) for exactly what is live.
+> **Status: all four phases complete.** Collection (reverse proxy, SDK ingest,
+> active prober), the minute-rollup job, every Golden-Signal analytics endpoint,
+> Holt-Winters forecasting, explained anomaly detection, the live React
+> dashboard and the Kubernetes manifests are all built and verified. `docker
+> compose up --build` gives a stack that is charting its own demo upstream
+> within a minute. See the [API overview](#api-overview) for the full surface.
 
 ---
 
@@ -29,6 +30,7 @@ all on a single PostgreSQL instance and a single FastAPI process.
 - [Tech stack](#tech-stack)
 - [Local setup](#local-setup)
 - [Try it — end-to-end curl walkthrough](#try-it--end-to-end-curl-walkthrough)
+- [Dashboard](#dashboard)
 - [API overview](#api-overview)
 - [Database design](#database-design)
 - [Testing](#testing)
@@ -250,8 +252,11 @@ curl -s localhost:8000/v1/apis -H "Authorization: Bearer $TOKEN"
 # 5 — Confirm the guard rails
 curl -s -o /dev/null -w '%{http_code}\n' localhost:8000/v1/apis
 # → 401   (no token)
-curl -s "localhost:8000/v1/analytics/latency?api_id=1"
-# → {"detail":"not implemented: analytics.latency"}   (501, phase 2)
+curl -s "localhost:8000/v1/analytics/latency?api_id=1&window_min=60"
+# → {"api_id":1,"metric":"latency.p95","points":[{"bucket":"...","value":221.1},...]}
+
+# 6 — Watch the live stream the dashboard renders from
+curl -sN "localhost:8000/v1/stream?limit=2"
 ```
 
 On Windows PowerShell, replace the `TOKEN=$(...)` line with:
@@ -264,9 +269,54 @@ $TOKEN = (curl.exe -s -X POST localhost:8000/v1/auth/login `
 
 ---
 
+## Dashboard
+
+`docker compose up --build` serves the dashboard at <http://localhost:5173>.
+Nothing else is needed: on first boot the API registers the three bundled demo
+endpoints, the prober starts exercising them, and the first rollups appear
+within a minute.
+
+To iterate on the frontend with hot reload instead, run the backend from compose
+and Vite on the host:
+
+```bash
+docker compose up -d db api demo-target
+cd frontend && npm install && npm run dev     # http://localhost:5173
+```
+
+Vite proxies `/v1`, `/proxy`, `/health` and `/docs` to `127.0.0.1:8000`, so the
+browser only ever makes same-origin requests — no CORS, and `text/event-stream`
+passes through unbuffered. Point it elsewhere with `PULSEGRID_API=http://host:port`.
+
+**What is on the screen**
+
+| Panel | Reads from |
+| --- | --- |
+| Header tiles | `GET /v1/analytics/overview` (and every `snapshot` frame) |
+| Fleet list | Same payload — every API's health score, worst first |
+| Latency percentiles | `GET /v1/analytics/latency` (p50/p95/p99), SLO drawn as a reference line |
+| Traffic and forecast | `GET /v1/analytics/traffic` + `GET /v1/forecast/{id}` with its 95% band |
+| Error rate | `GET /v1/analytics/errors`, against the error budget the SLO implies |
+| Endpoints | `GET /v1/analytics/endpoints`, slowest first |
+| Detected anomalies | `GET /v1/alerts` — each row leads with the detector's explanation |
+| Model metrics | `GET /v1/models/metrics`, beside the seasonal-naive baseline |
+
+**Live updates.** The dashboard subscribes to `/v1/stream` and re-reads the
+per-API panels on each frame. If the stream cannot be established — an
+intermediary that buffers SSE, say — it falls back to polling and the header
+badge says `Polling` rather than `Live`. A dashboard that lies about its own
+freshness is worse than one that admits it fell back.
+
+**Colour.** Series colours are a validated categorical palette, checked for
+colour-vision separation against both the light and dark surfaces, and both
+themes are selected rather than auto-inverted. Status is always a dot *and* a
+label, so no state is carried by colour alone.
+
+---
+
 ## API overview
 
-✅ implemented · 🚧 declared in OpenAPI, returns `501 {"detail": "not implemented: <name>"}`
+Every route below is implemented. 🔒 marks the ones that require a bearer token.
 
 | Method | Route | Auth | Description | Status |
 | --- | --- | :---: | --- | :---: |
@@ -280,22 +330,32 @@ $TOKEN = (curl.exe -s -X POST localhost:8000/v1/auth/login `
 | `GET` | `/v1/apis/{api_id}` | 🔒 | Fetch one registered API | ✅ |
 | `PATCH` | `/v1/apis/{api_id}` | 🔒 | Partially update a registered API | ✅ |
 | `DELETE` | `/v1/apis/{api_id}` | 🔒 | Deregister an API | ✅ |
-| `GET` | `/v1/stream` | — | SSE live channel (heartbeat frames) | ✅ |
-| `POST` | `/v1/ingest` | — | Bulk-ingest SDK-observed calls | 🚧 phase 2 |
-| `*` | `/proxy/{path}` | — | Transparent reverse proxy + measurement | 🚧 phase 2 |
-| `GET` | `/v1/analytics/latency` | — | p50/p95/p99/avg latency series | 🚧 phase 2 |
-| `GET` | `/v1/analytics/traffic` | — | Requests-per-minute series | 🚧 phase 2 |
-| `GET` | `/v1/analytics/errors` | — | Error-rate series | 🚧 phase 2 |
-| `GET` | `/v1/analytics/health` | — | Composite 0–100 health score vs SLO | 🚧 phase 2 |
-| `GET` | `/v1/analytics/summary` | — | Fleet-wide summary tiles | 🚧 phase 2 |
-| `GET` | `/v1/forecast/{api_id}` | — | Traffic forecast with intervals | 🚧 phase 3 |
-| `GET` | `/v1/anomalies/{api_id}` | — | Detected anomalies with explanations | 🚧 phase 3 |
-| `GET` | `/v1/models/metrics` | — | Offline model evaluation metrics | 🚧 phase 3 |
+| `GET` | `/v1/stream` | — | SSE live channel (`heartbeat` + `snapshot` frames) | ✅ |
+| `POST` | `/v1/ingest` | — | Bulk-ingest SDK-observed calls | ✅ |
+| `*` | `/proxy/{slug}/{path}` | — | Transparent reverse proxy + measurement | ✅ |
+| `GET` | `/v1/analytics/latency` | — | p50/p95/p99/avg latency series | ✅ |
+| `GET` | `/v1/analytics/traffic` | — | Requests-per-minute series | ✅ |
+| `GET` | `/v1/analytics/errors` | — | Error-rate series | ✅ |
+| `GET` | `/v1/analytics/health` | — | Composite 0–100 health score vs SLO | ✅ |
+| `GET` | `/v1/analytics/summary` | — | Fleet-wide summary tiles | ✅ |
+| `GET` | `/v1/analytics/overview` | — | Summary tiles **plus** every API's standing | ✅ |
+| `GET` | `/v1/analytics/endpoints` | — | Per-endpoint Golden Signals, slowest first | ✅ |
+| `GET` | `/v1/forecast/{api_id}` | — | Traffic forecast with 95% intervals | ✅ |
+| `GET` | `/v1/anomalies/{api_id}` | — | Detected anomalies with explanations | ✅ |
+| `GET` | `/v1/alerts` | — | Fleet-wide alert feed, newest first | ✅ |
+| `GET` | `/v1/models/metrics` | — | Offline model evaluation metrics | ✅ |
 
 **Conventions.** Everything lives under `/v1` except `/health` (stable probe
-path for orchestrators) and `/proxy/{path}` (must mirror upstream paths
+path for orchestrators) and `/proxy/{slug}/{path}` (must mirror upstream paths
 verbatim so callers change nothing but a base URL). Every error — validation,
-auth, not-found, not-implemented — uses the same `{"detail": ...}` shape.
+auth, not-found — uses the same `{"detail": ...}` shape.
+
+**Why analytics is unauthenticated while the registry is not.** Reading a
+metric tells you how an API is behaving; the registry tells you its upstream
+address and its credentials hint. The dashboard is therefore a read-only
+observer with no login, while anything that could change what is monitored
+requires a token. Put the read path behind auth too before exposing PulseGrid
+outside a trusted network.
 
 **Demo upstream** (port 8001, ✅ fully implemented): `GET /fast`, `GET /slow`
 (random 100–800 ms), `GET /flaky` (~10% 500s), `GET /health`.
@@ -402,7 +462,7 @@ uv run ruff format --check .
 | `tests/test_health.py` | `/health` DB ping, `/docs`, and that every router appears in the OpenAPI document |
 | `tests/test_auth.py` | Register (incl. duplicate + weak password), login (incl. wrong password and unknown email returning *identical* 401s), token-guarded access, and unit tests for the hashing/JWT primitives |
 | `tests/test_registry.py` | Full CRUD happy path, defaults, 404, auth-required on every verb, owner scoping, admin visibility, validation |
-| `tests/test_stubs.py` | Every stub returns the agreed `501 {"detail": "not implemented: <name>"}`, and `/v1/stream` emits real SSE frames |
+| `tests/test_pipeline.py` | The whole path: endpoint normalisation, ingest, rollup idempotency, every analytics series, the health score, both detectors, forecasting and backtesting, and the SSE frames |
 
 **Why SQLite in-memory?** Everything phase 1 tests — auth, registry CRUD,
 routing, SSE framing — is engine-agnostic SQL, so a PostgreSQL container would
@@ -445,15 +505,17 @@ pulsegrid/
 │   │   ├── auth/             # security.py (hashing, JWT), dependencies.py (guards)
 │   │   ├── routers/          # auth, registry, ingest, analytics, ml, stream
 │   │   ├── jobs/scheduler.py # APScheduler instance + register_jobs()
-│   │   └── ml/               # forecasting.py, anomaly.py (signatures, phase 3)
+│   │   ├── analytics.py      # every Golden-Signal query over metric_rollup
+│   │   ├── bootstrap.py      # first-boot demo provisioning
+│   │   └── ml/               # forecasting.py, anomaly.py, metrics_store.py
 │   ├── alembic/              # env.py + the initial migration
 │   ├── tests/                # pytest suite
 │   ├── pyproject.toml        # uv-managed deps, ruff + pytest config
 │   └── Dockerfile            # multi-stage, non-root
-├── frontend/                 # Vite + React + TS + Recharts scaffold
-├── k8s/                      # manifests — phase 4
-├── notebooks/                # ML exploration — phase 3
-├── scripts/seed_nasa.py      # NASA-HTTP dataset loader — phase 3
+├── frontend/                 # Vite + React + TS + Recharts live dashboard
+├── k8s/                      # Kustomize manifests (namespace → HPA)
+├── notebooks/                # ML exploration
+├── scripts/seed_nasa.py      # NASA-HTTP dataset loader
 ├── docs/
 │   ├── architecture.md       # full architecture + rejected alternatives
 │   └── decisions.md          # every judgement call, with reasoning
@@ -471,9 +533,9 @@ pulsegrid/
 | Phase | Scope | Status |
 | --- | --- | :---: |
 | **1 — Skeleton** | Repo layout, complete schema + migration, auth, registry CRUD, SSE plumbing, demo upstream, Docker stack, CI | ✅ |
-| **2 — Collection & analytics** | Reverse-proxy forwarding, `/v1/ingest`, active prober, rollup job, all `/v1/analytics/*`, real SSE metric frames | ⏳ |
-| **3 — ML** | Holt-Winters forecasting, robust z-score + IsolationForest anomaly detection with explanations, NASA dataset seeding, model metrics | ⏳ |
-| **4 — Dashboard & deploy** | React + Recharts dashboard, Kubernetes manifests, ERD and architecture diagrams | ⏳ |
+| **2 — Collection & analytics** | Reverse-proxy forwarding, `/v1/ingest`, active prober, rollup job, all `/v1/analytics/*`, real SSE metric frames | ✅ |
+| **3 — ML** | Holt-Winters forecasting, robust z-score + IsolationForest anomaly detection with explanations, NASA dataset seeding, model metrics | ✅ |
+| **4 — Dashboard & deploy** | React + Recharts live dashboard, nginx image, Kubernetes manifests | ✅ |
 
 ---
 

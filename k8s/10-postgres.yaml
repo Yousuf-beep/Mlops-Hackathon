@@ -1,0 +1,91 @@
+# PostgreSQL as a single-replica StatefulSet.
+#
+# A Deployment would allow two pods to mount the same PersistentVolume during a
+# rolling update, which corrupts the data directory. The StatefulSet's ordered,
+# at-most-one-pod-per-ordinal guarantee is the reason it exists, and it is the
+# only correct choice for a database that owns a volume.
+#
+# For anything past a demo, point DATABASE_URL at a managed instance instead.
+apiVersion: v1
+kind: Service
+metadata:
+  name: pulsegrid-db
+  namespace: pulsegrid
+  labels:
+    app.kubernetes.io/name: pulsegrid
+    app.kubernetes.io/component: database
+spec:
+  # Headless: clients resolve the pod directly. There is nothing to load-balance
+  # across one primary, and a stable identity is what the StatefulSet provides.
+  clusterIP: None
+  selector:
+    app.kubernetes.io/component: database
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: 5432
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: pulsegrid-db
+  namespace: pulsegrid
+spec:
+  serviceName: pulsegrid-db
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: database
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: pulsegrid
+        app.kubernetes.io/component: database
+    spec:
+      securityContext:
+        fsGroup: 999
+      containers:
+        - name: postgres
+          image: postgres:17-alpine
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              valueFrom:
+                configMapKeyRef: { name: pulsegrid-config, key: POSTGRES_DB }
+            - name: POSTGRES_USER
+              valueFrom:
+                configMapKeyRef: { name: pulsegrid-config, key: POSTGRES_USER }
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: pulsegrid-secrets, key: POSTGRES_PASSWORD }
+            # The image initialises the cluster in a subdirectory; pointing
+            # PGDATA at one keeps `lost+found` on the volume root from making
+            # initdb refuse to run.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          volumeMounts:
+            - name: pgdata
+              mountPath: /var/lib/postgresql/data
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "pulsegrid", "-d", "pulsegrid"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "pulsegrid", "-d", "pulsegrid"]
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            requests: { cpu: "100m", memory: "256Mi" }
+            limits: { cpu: "1000m", memory: "1Gi" }
+  volumeClaimTemplates:
+    - metadata:
+        name: pgdata
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 10Gi

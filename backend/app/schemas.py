@@ -190,6 +190,57 @@ class SummaryResponse(BaseModel):
     open_alerts: int
 
 
+class ApiOverviewItem(BaseModel):
+    """One row of the fleet overview: an API and its current standing."""
+
+    api_id: int
+    name: str
+    score: float = Field(ge=0.0, le=100.0)
+    availability: float
+    error_rate: float
+    p95_ms: float
+    req_count: int
+    slo_target: float
+    slo_latency_ms: int
+    open_alerts: int
+    status: Literal["healthy", "degraded", "critical", "no_data"]
+
+
+class OverviewResponse(BaseModel):
+    """Fleet-wide tiles plus every API's standing, in one round trip.
+
+    The dashboard refreshes this on every stream frame; folding the per-API
+    rows into the same payload keeps that to one request instead of one per
+    registered API.
+    """
+
+    window_min: int
+    generated_at: datetime
+    summary: SummaryResponse
+    apis: list[ApiOverviewItem] = Field(default_factory=list)
+
+
+class EndpointBreakdownItem(BaseModel):
+    """Per-endpoint Golden Signals for one API over a window."""
+
+    endpoint: str
+    req_count: int
+    err_count: int
+    error_rate: float
+    p50_ms: float
+    p95_ms: float
+    p99_ms: float
+    avg_ms: float
+
+
+class EndpointBreakdownResponse(BaseModel):
+    """Endpoint table for one API, slowest first."""
+
+    api_id: int
+    window_min: int
+    endpoints: list[EndpointBreakdownItem] = Field(default_factory=list)
+
+
 # --------------------------------------------------------------------------- #
 # ML (phase 3)                                                                 #
 # --------------------------------------------------------------------------- #

@@ -7,11 +7,16 @@ worker image, no second deployment — which keeps the whole system deployable
 with one ``docker compose up``. Celery's fan-out and durability guarantees
 would buy nothing here and cost a Redis/RabbitMQ dependency.
 
-Phase 1 registers one no-op heartbeat job. Later phases add:
-    * ``rollup_job``   — aggregate ``request_log`` into ``metric_rollup`` (60s)
-    * ``prober_job``   — actively probe registered APIs (30s)
-    * ``anomaly_job``  — score recent buckets, write ``alert`` rows (60s)
-    * ``forecast_job`` — refit the traffic forecast (5m)
+Registered jobs:
+    * ``heartbeat_job`` — liveness line proving the scheduler thread is alive
+    * ``prober_job``    — actively probe every registered API
+    * ``rollup_job``    — aggregate ``request_log`` into ``metric_rollup``
+    * ``anomaly_job``   — score recent buckets, write ``alert`` rows
+    * ``forecast_job``  — refit the traffic forecast
+
+Every period is configurable. The defaults run the prober faster than the
+rollup on purpose, so each closed bucket covers several observations and its
+percentiles mean something.
 """
 
 from __future__ import annotations
@@ -23,6 +28,9 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
 from app.config import settings
+from app.jobs.ml_jobs import anomaly_job, forecast_job
+from app.jobs.prober import prober_job
+from app.jobs.rollup import rollup_job
 
 logger = logging.getLogger(__name__)
 
@@ -40,8 +48,9 @@ HEARTBEAT_JOB_ID = "heartbeat"
 def heartbeat_job() -> None:
     """Log a liveness line so scheduler failures are visible in the API logs.
 
-    This is the phase-1 placeholder: it proves the scheduler is started, that
-    its thread survives the app lifespan, and that job logging reaches stdout.
+    Kept alongside the real jobs because it is the only one that runs
+    unconditionally: if the heartbeat stops appearing, the scheduler thread
+    died, rather than the fleet simply having nothing to do.
     """
     logger.info(
         "scheduler heartbeat at %s (env=%s)",
@@ -64,13 +73,41 @@ def register_jobs(target: BackgroundScheduler | None = None) -> BackgroundSchedu
         BackgroundScheduler: The scheduler the jobs were registered on.
     """
     sched = target or scheduler
-    sched.add_job(
-        heartbeat_job,
-        trigger=IntervalTrigger(seconds=settings.HEARTBEAT_INTERVAL_SECONDS),
-        id=HEARTBEAT_JOB_ID,
-        name="no-op liveness heartbeat",
-        replace_existing=True,
+    specs = (
+        (
+            heartbeat_job,
+            HEARTBEAT_JOB_ID,
+            "no-op liveness heartbeat",
+            settings.HEARTBEAT_INTERVAL_SECONDS,
+        ),
+        (prober_job, "prober", "actively probe registered APIs", settings.PROBE_INTERVAL_SECONDS),
+        (
+            rollup_job,
+            "rollup",
+            "aggregate request_log into metric_rollup",
+            settings.ROLLUP_INTERVAL_SECONDS,
+        ),
+        (
+            anomaly_job,
+            "anomaly",
+            "score recent buckets and raise alerts",
+            settings.ANOMALY_INTERVAL_SECONDS,
+        ),
+        (
+            forecast_job,
+            "forecast",
+            "refit the traffic forecast",
+            settings.FORECAST_INTERVAL_SECONDS,
+        ),
     )
+    for func, job_id, name, seconds in specs:
+        sched.add_job(
+            func,
+            trigger=IntervalTrigger(seconds=seconds),
+            id=job_id,
+            name=name,
+            replace_existing=True,
+        )
     logger.info("registered %d scheduled job(s)", len(sched.get_jobs()))
     return sched
 

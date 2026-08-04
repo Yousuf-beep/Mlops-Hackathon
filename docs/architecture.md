@@ -128,7 +128,12 @@ explain why, is the point.
 
 | Phase | Scope |
 | --- | --- |
-| **1 — skeleton** *(this one)* | Repo layout, full schema + migration, auth, registry CRUD, SSE heartbeat, demo target, Docker, CI. Everything else returns `501`. |
-| 2 — collection & analytics | Proxy forwarding, ingest, prober, rollup job, all `/v1/analytics/*`, real SSE frames. |
-| 3 — ML | Holt-Winters forecasting, robust z-score + IsolationForest anomaly detection with explanations, NASA dataset seeding, model metrics. |
-| 4 — dashboard & deploy | React + Recharts dashboard, Kubernetes manifests, ERD and architecture diagrams. |
+| **1 — skeleton** ✅ | Repo layout, full schema + migration, auth, registry CRUD, SSE plumbing, demo target, Docker, CI. |
+| **2 — collection & analytics** ✅ | Proxy forwarding, ingest, prober, rollup job, all `/v1/analytics/*`, real SSE `snapshot` frames. |
+| **3 — ML** ✅ | Holt-Winters forecasting, robust z-score + IsolationForest anomaly detection with explanations, NASA dataset seeding, model metrics. |
+| **4 — dashboard & deploy** ✅ | React + Recharts live dashboard, nginx image, Kustomize manifests. |
+
+All four are built. What is deliberately *not* here: per-endpoint anomaly
+detection (needs an alert-suppression policy first), a persisted model-metrics
+table (the store is per-process, see `app/ml/metrics_store.py`), auth on the
+analytics read path, and a retention/downsampling policy for `request_log`.

@@ -1,0 +1,31 @@
+# Autoscaling for the API only. The web tier is static files, and the database
+# is a StatefulSet that must not be scaled horizontally at all.
+#
+# The floor is 2, not 1: the proxy sits in callers' request paths, so a
+# scale-to-one window would make a single pod restart a full outage.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: pulsegrid-api
+  namespace: pulsegrid
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: pulsegrid-api
+  minReplicas: 2
+  maxReplicas: 8
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+  behavior:
+    scaleDown:
+      # Scale down slowly: proxied requests are in flight, and a fast scale-down
+      # after a traffic spike tends to oscillate against the next one.
+      stabilizationWindowSeconds: 300
+    scaleUp:
+      stabilizationWindowSeconds: 30

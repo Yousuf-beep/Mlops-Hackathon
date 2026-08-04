@@ -1,0 +1,40 @@
+# Configuration split by sensitivity: the ConfigMap holds tunables that are safe
+# in `kubectl describe` output, the Secret holds anything that grants access.
+#
+# The Secret below carries placeholder values so `kubectl apply -k k8s/` works
+# out of the box. Replace them before exposing the stack to anything — a
+# committed JWT secret is a signing oracle for anyone who reads the repo. In a
+# real cluster this Secret comes from External Secrets, SOPS or the cloud
+# provider's secret store, not from git.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pulsegrid-config
+  namespace: pulsegrid
+data:
+  ENV: "prod"
+  LOG_LEVEL: "INFO"
+  SCHEDULER_ENABLED: "true"
+  SSE_HEARTBEAT_SECONDS: "5"
+  PROBE_INTERVAL_SECONDS: "15"
+  ROLLUP_INTERVAL_SECONDS: "30"
+  ANOMALY_INTERVAL_SECONDS: "60"
+  FORECAST_INTERVAL_SECONDS: "300"
+  DEMO_TARGET_URL: "http://pulsegrid-demo-target:8001"
+  # Seeds the three demo endpoints on first boot. Turn this off for a real
+  # deployment: it also creates a well-known operator password.
+  DEMO_AUTOSEED: "true"
+  POSTGRES_DB: "pulsegrid"
+  POSTGRES_USER: "pulsegrid"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: pulsegrid-secrets
+  namespace: pulsegrid
+type: Opaque
+stringData:
+  POSTGRES_PASSWORD: "change-me-before-you-deploy"
+  JWT_SECRET: "change-me-before-you-deploy"
+  DEMO_ADMIN_PASSWORD: "change-me-before-you-deploy"
+  DATABASE_URL: "postgresql+psycopg://pulsegrid:change-me-before-you-deploy@pulsegrid-db:5432/pulsegrid"

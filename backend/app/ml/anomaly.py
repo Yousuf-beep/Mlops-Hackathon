@@ -1,13 +1,13 @@
-"""Anomaly detection over Golden-Signal rollups (phase 3 — signatures only).
+"""Anomaly detection over Golden-Signal rollups.
 
-Planned approach
-----------------
+Approach
+--------
 Two complementary detectors, because API incidents come in two shapes:
 
-1. **Robust z-score on a rolling baseline** (per API × endpoint × signal).
-   Uses median and MAD rather than mean and standard deviation so a single
-   spike does not inflate the baseline and mask the next one. Catches sudden
-   univariate breaks — a latency cliff, an error burst.
+1. **Robust z-score on a rolling baseline** (per signal). Uses median and MAD
+   rather than mean and standard deviation so a single spike does not inflate
+   the baseline and mask the next one. Catches sudden univariate breaks — a
+   latency cliff, an error burst.
 
 2. **scikit-learn IsolationForest** over the joint feature vector
    ``(p95_ms, req_count, err_rate, saturation_pct)``. Catches *combinations*
@@ -15,16 +15,53 @@ Two complementary detectors, because API incidents come in two shapes:
    traffic collapsing while latency stays flat, which a per-signal detector
    never sees.
 
-Every detection is written to the ``alert`` table with a natural-language
-``explanation`` and the ``expected_range`` it violated, so the dashboard can
-answer "why did this fire?" rather than only "something fired".
+Every detection carries a natural-language ``explanation`` and the
+``expected_range`` it violated, so the dashboard can answer "why did this fire?"
+rather than only "something fired".
+
+Only the **most recent** bucket is reported. The detectors score the whole
+window because they need the history to form a baseline, but alerting on old
+buckets on every run would re-fire the same incident once a minute.
 """
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
+import numpy as np
 import pandas as pd
+
+logger = logging.getLogger(__name__)
+
+#: Scale factor turning a MAD into a standard-deviation-equivalent, so the
+#: threshold below is interpretable in familiar sigma units.
+_MAD_TO_SIGMA = 0.6745
+
+#: Robust z above which a point is anomalous. 3.5 is the Iglewicz-Hoaglin
+#: recommendation and is deliberately less trigger-happy than the classic 3.0.
+DEFAULT_Z_THRESHOLD = 3.5
+
+#: Last-resort spread for a perfectly constant baseline, as a fraction of its
+#: level: a 1% move off a dead-flat series reads as one sigma.
+_FLAT_BASELINE_SCALE = 0.01
+
+#: Minimum samples before a rolling baseline means anything. Below this the
+#: detector stays silent rather than calling the second data point an anomaly.
+MIN_BASELINE_SAMPLES = 8
+
+#: Multiples of the threshold at which severity escalates.
+_CRITICAL_MULTIPLE = 2.0
+_WARNING_MULTIPLE = 1.0
+
+#: Human-facing units per signal, used when rendering explanations.
+_UNITS = {
+    "latency": "ms",
+    "traffic": "req/min",
+    "errors": "%",
+    "saturation": "%",
+    "multivariate": "ms",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,20 +94,42 @@ class AnomalyResult:
 def robust_zscore(series: pd.Series, window: int = 30, threshold: float = 3.5) -> pd.Series:
     """Score each point by its robust z-score against a trailing window.
 
-    Uses ``0.6745 * (x - median) / MAD``, the standard MAD-based estimator.
+    Uses ``0.6745 * (x - median) / MAD``, the standard MAD-based estimator. The
+    baseline is *trailing and exclusive* — a point is never part of the window
+    it is judged against, which stops a large spike from normalising itself.
 
     Args:
         series: Metric series indexed by minute bucket.
         window: Trailing baseline length in samples.
-        threshold: Score above which a point counts as anomalous.
+        threshold: Score above which a point counts as anomalous. Retained for
+            call-site readability; the caller applies it.
 
     Returns:
-        pd.Series: Robust z-scores aligned with the input index.
-
-    Raises:
-        NotImplementedError: Phase 3.
+        pd.Series: Robust z-scores aligned with the input index. Points without
+        enough history score ``0.0`` — unknown is not the same as normal, but
+        alerting on unknown is worse than staying quiet.
     """
-    raise NotImplementedError("phase 3: anomaly.robust_zscore")
+    _ = threshold
+    values = series.astype("float64")
+    baseline = values.shift(1).rolling(window=window, min_periods=MIN_BASELINE_SAMPLES)
+    median = baseline.median()
+    mad = baseline.apply(lambda w: np.median(np.abs(w - np.median(w))), raw=True)
+
+    # A MAD of zero means a perfectly flat baseline, where any deviation is
+    # infinitely many MADs away. Degrade to the rolling standard deviation, and
+    # if that is zero too, to a fraction of the level itself — so a synthetic or
+    # rate-limited series that sits at exactly one value still produces a large
+    # but *finite* score instead of an inf that no threshold can compare.
+    scale = (
+        (mad / _MAD_TO_SIGMA)
+        .replace(0.0, np.nan)
+        .fillna(baseline.std().replace(0.0, np.nan))
+        .fillna(median.abs() * _FLAT_BASELINE_SCALE)
+        .replace(0.0, np.nan)
+    )
+
+    scores = (values - median) / scale
+    return scores.replace([np.inf, -np.inf], np.nan).fillna(0.0)
 
 
 def fit_isolation_forest(features: pd.DataFrame, contamination: float = 0.02) -> object:
@@ -84,26 +143,39 @@ def fit_isolation_forest(features: pd.DataFrame, contamination: float = 0.02) ->
         object: The fitted ``sklearn.ensemble.IsolationForest``.
 
     Raises:
-        NotImplementedError: Phase 3.
+        ValueError: If ``features`` is empty.
     """
-    raise NotImplementedError("phase 3: anomaly.fit_isolation_forest")
+    if features.empty:
+        raise ValueError("cannot fit IsolationForest on an empty feature frame")
+
+    from sklearn.ensemble import IsolationForest
+
+    model = IsolationForest(
+        n_estimators=128,
+        contamination=contamination,
+        # Fixed seed: an alert that appears and disappears between identical
+        # runs is worse than a slightly suboptimal forest.
+        random_state=42,
+    )
+    model.fit(features.to_numpy(dtype="float64"))
+    return model
 
 
-def detect(rollups: pd.DataFrame, slo_latency_ms: int = 500) -> list[AnomalyResult]:
-    """Run both detectors over a window of rollups and merge their findings.
+def _severity_for(score: float, threshold: float) -> str:
+    """Grade a detector score into an operator-facing severity.
 
     Args:
-        rollups: Recent rows from ``metric_rollup`` for one API.
-        slo_latency_ms: The API's latency objective, used to grade severity.
+        score: Absolute detector score.
+        threshold: The score at which the detector fires at all.
 
     Returns:
-        list[AnomalyResult]: Detections, de-duplicated across detectors and
-        ordered by descending score.
-
-    Raises:
-        NotImplementedError: Phase 3.
+        str: ``critical``, ``warning`` or ``info``.
     """
-    raise NotImplementedError("phase 3: anomaly.detect")
+    if score >= threshold * _CRITICAL_MULTIPLE:
+        return "critical"
+    if score >= threshold * _WARNING_MULTIPLE:
+        return "warning"
+    return "info"
 
 
 def explain(result: AnomalyResult, api_name: str, endpoint: str | None) -> str:
@@ -115,10 +187,157 @@ def explain(result: AnomalyResult, api_name: str, endpoint: str | None) -> str:
         endpoint: Endpoint template, or ``None`` for API-wide.
 
     Returns:
-        str: For example ``"p95 latency 812 ms on /orders is 4.1x the expected
-        120-180 ms band for this time of day."``
-
-    Raises:
-        NotImplementedError: Phase 3.
+        str: For example ``"p95 latency 812 ms on /orders (Payments API) is
+        4.1 sigma above the recent baseline of 120-180 ms."``
     """
-    raise NotImplementedError("phase 3: anomaly.explain")
+    unit = _UNITS.get(result.signal, "")
+    scope = f"{endpoint} ({api_name})" if endpoint else api_name
+    band = f"{result.expected_low:.1f}-{result.expected_high:.1f} {unit}".strip()
+    direction = "above" if result.metric_value > result.expected_high else "below"
+
+    if result.detector == "isolation_forest":
+        return (
+            f"{result.signal} on {scope} is jointly abnormal: the combination of "
+            f"latency, traffic and error rate scores {result.score:.2f} against the "
+            f"last window, outside the usual {band} band for this signal."
+        )
+    return (
+        f"{result.signal} {result.metric_value:.1f} {unit}".rstrip()
+        + f" on {scope} is {abs(result.score):.1f} sigma {direction} "
+        f"the recent baseline of {band}."
+    )
+
+
+def _band(series: pd.Series, window: int, threshold: float) -> tuple[float, float]:
+    """Compute the expected band for the newest point of a series.
+
+    Args:
+        series: The metric series being judged.
+        window: Trailing baseline length.
+        threshold: Robust-z threshold defining the band edges.
+
+    Returns:
+        tuple[float, float]: ``(low, high)``, clipped at zero below.
+    """
+    baseline = series.iloc[:-1].tail(window).astype("float64")
+    if baseline.empty:
+        return 0.0, 0.0
+    median = float(baseline.median())
+    mad = float(np.median(np.abs(baseline - median)))
+    scale = mad / _MAD_TO_SIGMA if mad > 0 else float(baseline.std(ddof=0) or 0.0)
+    return max(0.0, median - threshold * scale), median + threshold * scale
+
+
+def detect(rollups: pd.DataFrame, slo_latency_ms: int = 500) -> list[AnomalyResult]:
+    """Run both detectors over a window of rollups and merge their findings.
+
+    Args:
+        rollups: Recent rows from ``metric_rollup`` for one API, with ``bucket``,
+            ``req_count``, ``err_count``, ``p95_ms`` and optionally
+            ``saturation_pct``.
+        slo_latency_ms: The API's latency objective. A latency anomaly that is
+            still inside the SLO is reported as ``info`` — technically unusual,
+            but not yet worth waking anybody.
+
+    Returns:
+        list[AnomalyResult]: Detections for the most recent bucket only,
+        de-duplicated across detectors and ordered by descending score.
+    """
+    if rollups.empty:
+        return []
+
+    frame = rollups.copy()
+    frame["bucket"] = pd.to_datetime(frame["bucket"], utc=True)
+    aggregations: dict[str, tuple[str, str]] = {
+        "req_count": ("req_count", "sum"),
+        "err_count": ("err_count", "sum"),
+        # The API-level latency signal takes the worst endpoint in the bucket:
+        # one endpoint falling over is an incident even when the mean is calm.
+        "p95_ms": ("p95_ms", "max"),
+    }
+    if "saturation_pct" in frame.columns and frame["saturation_pct"].notna().any():
+        aggregations["saturation_pct"] = ("saturation_pct", "mean")
+    grouped = frame.groupby("bucket").agg(**aggregations).sort_index()  # type: ignore[call-overload]
+    if len(grouped) < MIN_BASELINE_SAMPLES + 1:
+        return []
+
+    grouped["err_rate"] = 100.0 * grouped["err_count"] / grouped["req_count"].replace(0, np.nan)
+    grouped = grouped.fillna(0.0)
+
+    signals = {
+        "latency": grouped["p95_ms"],
+        "traffic": grouped["req_count"].astype("float64"),
+        "errors": grouped["err_rate"],
+    }
+
+    results: list[AnomalyResult] = []
+    for signal, series in signals.items():
+        scores = robust_zscore(series)
+        score = float(scores.iloc[-1])
+        if abs(score) < DEFAULT_Z_THRESHOLD:
+            continue
+        value = float(series.iloc[-1])
+        low, high = _band(series, window=30, threshold=DEFAULT_Z_THRESHOLD)
+        severity = _severity_for(abs(score), DEFAULT_Z_THRESHOLD)
+        if signal == "latency" and value <= slo_latency_ms:
+            severity = "info"
+        results.append(
+            AnomalyResult(
+                signal=signal,
+                metric_value=round(value, 3),
+                expected_low=round(low, 3),
+                expected_high=round(high, 3),
+                score=round(score, 3),
+                severity=severity,
+                explanation="",
+                detector="robust_zscore",
+            )
+        )
+
+    joint = _isolation_forest_finding(grouped)
+    if joint is not None and not any(r.signal == joint.signal for r in results):
+        results.append(joint)
+
+    results.sort(key=lambda r: abs(r.score), reverse=True)
+    return results
+
+
+def _isolation_forest_finding(grouped: pd.DataFrame) -> AnomalyResult | None:
+    """Score the newest bucket's joint feature vector with an IsolationForest.
+
+    Args:
+        grouped: Per-bucket features for one API, ascending by bucket.
+
+    Returns:
+        AnomalyResult | None: A ``multivariate`` detection when the newest
+        bucket is an outlier in the joint space, otherwise ``None``.
+    """
+    features = grouped[["p95_ms", "req_count", "err_rate"]].astype("float64")
+    if "saturation_pct" in grouped:
+        features = features.assign(saturation_pct=grouped["saturation_pct"].astype("float64"))
+
+    try:
+        model = fit_isolation_forest(features.iloc[:-1])
+    except (ValueError, RuntimeError) as exc:
+        logger.debug("IsolationForest fit skipped: %s", exc)
+        return None
+
+    newest = features.iloc[[-1]].to_numpy(dtype="float64")
+    if model.predict(newest)[0] != -1:  # type: ignore[attr-defined]
+        return None
+
+    # decision_function is negative for outliers; flip it so "higher is more
+    # anomalous" holds across both detectors and the sort in `detect` is valid.
+    score = float(-model.decision_function(newest)[0])  # type: ignore[attr-defined]
+    p95 = float(features["p95_ms"].iloc[-1])
+    low, high = _band(features["p95_ms"], window=30, threshold=DEFAULT_Z_THRESHOLD)
+    return AnomalyResult(
+        signal="multivariate",
+        metric_value=round(p95, 3),
+        expected_low=round(low, 3),
+        expected_high=round(high, 3),
+        score=round(score, 4),
+        severity="warning",
+        explanation="",
+        detector="isolation_forest",
+    )

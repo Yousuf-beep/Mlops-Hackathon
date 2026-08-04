@@ -1,0 +1,67 @@
+# The synthetic upstream, so a cluster install has something real to proxy,
+# probe and chart from the first minute. Reuses the API image with a different
+# entrypoint module — one image to build, scan and push.
+#
+# Drop this file (and DEMO_AUTOSEED) when PulseGrid is pointed at real APIs.
+apiVersion: v1
+kind: Service
+metadata:
+  name: pulsegrid-demo-target
+  namespace: pulsegrid
+  labels:
+    app.kubernetes.io/name: pulsegrid
+    app.kubernetes.io/component: demo-target
+spec:
+  selector:
+    app.kubernetes.io/component: demo-target
+  ports:
+    - name: http
+      port: 8001
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pulsegrid-demo-target
+  namespace: pulsegrid
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: demo-target
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: pulsegrid
+        app.kubernetes.io/component: demo-target
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+      containers:
+        - name: demo-target
+          image: pulsegrid-api:dev
+          command:
+            [
+              "uvicorn",
+              "app.demo_target:app",
+              "--host",
+              "0.0.0.0",
+              "--port",
+              "8001",
+            ]
+          ports:
+            - name: http
+              containerPort: 8001
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests: { cpu: "50m", memory: "128Mi" }
+            limits: { cpu: "500m", memory: "256Mi" }

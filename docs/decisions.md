@@ -149,15 +149,20 @@ usable method names.
 
 ---
 
-## D11 — Two extra test files beyond the three listed
+## D11 — One extra test file beyond the three listed
 
-**Decision.** Added `tests/test_stubs.py` (asserts every 501 stub returns the
-agreed `{"detail": "not implemented: <name>"}` shape, and that `/v1/stream`
-emits real SSE frames) alongside the specified `test_health.py`,
-`test_auth.py`, `test_registry.py`.
+**Decision.** Added `tests/test_pipeline.py` alongside the specified
+`test_health.py`, `test_auth.py` and `test_registry.py`. It follows one
+observation from `POST /v1/ingest` through the rollup to the number the
+dashboard renders, and covers endpoint normalisation, rollup idempotency, every
+analytics series, the health score, both anomaly detectors, forecasting and
+backtesting, and the SSE frame format.
 
-**Why.** The 501 contract and the SSE wire format are exactly the things later
-phases will change by accident. Locking them in now costs one file.
+**Why.** Each stage of the pipeline can pass its own unit test while the
+handoff between two of them silently drops or mis-buckets rows — a bug class
+that only an end-to-end test catches. (This file replaced the phase-1
+`test_stubs.py`, which asserted that unimplemented routes returned `501`; those
+routes are now implemented, so that contract no longer exists to test.)
 
 ---
 

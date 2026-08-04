@@ -1,0 +1,8 @@
+# Everything PulseGrid owns lives in one namespace, so `kubectl delete ns
+# pulsegrid` is a complete uninstall.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: pulsegrid
+  labels:
+    app.kubernetes.io/name: pulsegrid
