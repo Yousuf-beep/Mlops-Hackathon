@@ -140,6 +140,47 @@ export interface HeatmapResponse {
   cells: HeatmapCell[]
 }
 
+/** Role granted to a PulseGrid operator account. */
+export type UserRole = 'admin' | 'viewer'
+
+/** Public projection of an operator account, as returned by auth endpoints. */
+export interface UserRead {
+  id: number
+  email: string
+  role: UserRole
+  created_at: string
+}
+
+/** Bearer token envelope returned by `POST /v1/auth/login`. */
+export interface Token {
+  access_token: string
+  token_type: string
+  expires_in: number
+}
+
+/** A registered API, as returned by `/v1/apis`. */
+export interface ApiRead {
+  id: number
+  name: string
+  base_url: string
+  upstream_url: string
+  owner_user_id: number
+  auth_type: string | null
+  slo_target: number
+  slo_latency_ms: number
+  created_at: string
+}
+
+/** Payload for `POST /v1/apis`. */
+export interface ApiCreatePayload {
+  name: string
+  base_url: string
+  upstream_url: string
+  auth_type?: string | null
+  slo_target?: number
+  slo_latency_ms?: number
+}
+
 /** Offline evaluation metrics for one deployed model. */
 export interface ModelMetrics {
   model_name: string

@@ -36,9 +36,32 @@ FLAKY_ERROR_RATE = 0.10
 class EchoResponse(BaseModel):
     """Standard demo-target reply."""
 
-    endpoint: Literal["fast", "slow", "flaky", "health"]
+    endpoint: Literal["fast", "slow", "flaky", "health", "users"]
     latency_ms: float
     message: str
+
+
+#: /users/{user_id} treats anything outside this range as "not found", so the
+#: route produces a second, distinct failure mode (404, not /flaky's 500) and
+#: exercises the proxy's id-folding (`/users/42` -> `/users/{id}`) with real
+#: traffic instead of only in a unit test.
+VALID_USER_ID_RANGE = range(1, 5000)
+
+
+@app.get("/", response_model=EchoResponse, summary="Service root")
+async def root() -> EchoResponse:
+    """Answer at the bare origin, not just `/health`.
+
+    `app/bootstrap.py` registers each demo API's ``upstream_url`` as this
+    service's bare origin (so a single API can proxy to more than one of its
+    sub-paths), and the active prober (`app/jobs/prober.py`) probes exactly
+    that URL with no path appended. Without a root route, every probe tick
+    would log a 404 against a service that is, in fact, up.
+
+    Returns:
+        EchoResponse: A constant healthy reply, same shape as `/health`.
+    """
+    return EchoResponse(endpoint="health", latency_ms=0.0, message="demo-target is up")
 
 
 @app.get("/health", response_model=EchoResponse, summary="Demo-target liveness probe")
@@ -88,3 +111,29 @@ async def flaky(response: Response) -> EchoResponse:
         response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
         return EchoResponse(endpoint="flaky", latency_ms=0.0, message="synthetic upstream failure")
     return EchoResponse(endpoint="flaky", latency_ms=0.0, message="ok")
+
+
+@app.get(
+    "/users/{user_id}",
+    response_model=EchoResponse,
+    summary="Fetch a synthetic user by id — a second endpoint per demo API",
+)
+async def get_user(user_id: int, response: Response) -> EchoResponse:
+    """Return a synthetic user, or 404 outside the valid id range.
+
+    Exists so each demo API has more than one route: without it, every
+    per-endpoint dashboard panel (rankings, heatmap, traffic distribution) had
+    nothing to compare against for a given API.
+
+    Args:
+        user_id: Path parameter; folded by the proxy's endpoint normaliser
+            into the `/users/{id}` route template regardless of its value.
+        response: Injected so a miss can set 404 without raising.
+
+    Returns:
+        EchoResponse: The synthetic user, or a 404 body outside the valid range.
+    """
+    if user_id not in VALID_USER_ID_RANGE:
+        response.status_code = status.HTTP_404_NOT_FOUND
+        return EchoResponse(endpoint="users", latency_ms=0.0, message=f"user {user_id} not found")
+    return EchoResponse(endpoint="users", latency_ms=0.0, message=f"user {user_id}")

@@ -15,10 +15,13 @@
  * timeline. "Random failures" and "slow requests" come from *which* demo
  * endpoint gets hit, not from special-casing errors in this script: the
  * three demo APIs already seeded by `app/bootstrap.py` (`demo-fast`,
- * `demo-slow`, `demo-flaky`) are picked with weighted randomness, and
- * `demo-flaky` already fails ~10% of the time server-side. An occasional
- * request to an unregistered slug produces organic 404s the same way a
- * mistyped real client call would.
+ * `demo-slow`, `demo-flaky`) each proxy to two real upstream routes — their
+ * signature one plus the shared `/users/{id}` — picked with weighted
+ * randomness. `demo-flaky` already fails ~10% of the time server-side, and
+ * `/users/{id}` 404s for an out-of-range id, so both an error-class and a
+ * not-found-class failure occur organically. An occasional request to an
+ * unregistered slug produces a third failure shape (routing 404s) the same
+ * way a mistyped real client call would.
  *
  * The scenario has a finite duration (the stages sum to a few minutes); the
  * `loadgen` compose service restarts it in a loop via `restart:
@@ -33,22 +36,38 @@ import { check } from 'k6'
 const BASE_URL = __ENV.BASE_URL || 'http://localhost:8000'
 
 /**
+ * Return a random synthetic user id, occasionally outside the valid range so
+ * `/users/{id}` produces its own (404) failure mode alongside `/flaky`'s 500s.
+ */
+function randomUserId() {
+  // ~8% land outside demo_target.VALID_USER_ID_RANGE (1..4999) on purpose.
+  if (Math.random() < 0.08) return 0 // noqa-equivalent: synthetic load, not crypto
+  return Math.floor(Math.random() * 5000) + 1
+}
+
+/**
  * Proxy paths to drive traffic through, each weighted by how often it should
- * be picked. Three real, registered demo APIs plus one deliberately unknown
- * slug for organic 404 traffic (a caller hitting a service that was never
- * registered, or was since deregistered).
+ * be picked.
  *
- * Each demo API's `upstream_url` (set by `app/bootstrap.py`) already points at
- * its specific endpoint (e.g. `demo-fast` -> `http://demo-target:8001/fast`),
- * so the proxied request is just `/proxy/{slug}` with no extra path segment —
- * appending one (`/proxy/demo-fast/fast`) would ask the upstream for
- * `/fast/fast`, which 404s.
+ * Each demo API's `upstream_url` (set by `app/bootstrap.py`) is the bare
+ * demo-target origin, so the remainder of the proxied path is forwarded
+ * as-is — `/proxy/demo-fast/fast` reaches `/fast`, `/proxy/demo-fast/users/7`
+ * reaches `/users/7`. Every registered API therefore gets *two* endpoints
+ * (its signature route plus the shared `/users/{id}` route), which is what
+ * gives the per-endpoint dashboard panels something to rank. One weighted
+ * entry per API is a function so each pick gets a fresh random id; a final
+ * fixed entry hits a deliberately unknown slug for organic 404 traffic (a
+ * caller hitting a service that was never registered, or was since
+ * deregistered).
  */
 const TARGETS = [
-  { weight: 45, path: '/proxy/demo-fast' },
-  { weight: 25, path: '/proxy/demo-slow' },
-  { weight: 25, path: '/proxy/demo-flaky' },
-  { weight: 5, path: '/proxy/not-registered/ping' },
+  { weight: 32, path: () => '/proxy/demo-fast/fast' },
+  { weight: 10, path: () => `/proxy/demo-fast/users/${randomUserId()}` },
+  { weight: 18, path: () => '/proxy/demo-slow/slow' },
+  { weight: 8, path: () => `/proxy/demo-slow/users/${randomUserId()}` },
+  { weight: 18, path: () => '/proxy/demo-flaky/flaky' },
+  { weight: 9, path: () => `/proxy/demo-flaky/users/${randomUserId()}` },
+  { weight: 5, path: () => '/proxy/not-registered/ping' },
 ]
 
 const TOTAL_WEIGHT = TARGETS.reduce((sum, target) => sum + target.weight, 0)
@@ -117,9 +136,10 @@ export const options = {
 
 export default function traffic() {
   const target = pickTarget()
-  const response = http.get(`${BASE_URL}${target.path}`, {
+  const path = target.path()
+  const response = http.get(`${BASE_URL}${path}`, {
     timeout: '20s',
-    tags: { pulsegrid_target: target.path },
+    tags: { pulsegrid_target: path },
   })
   check(response, {
     'got a response': (r) => r.status !== 0,

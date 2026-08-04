@@ -9,6 +9,8 @@
 
 import type {
   Alert,
+  ApiCreatePayload,
+  ApiRead,
   EndpointBreakdownResponse,
   ForecastResponse,
   HealthTimelineResponse,
@@ -16,6 +18,8 @@ import type {
   ModelMetrics,
   Snapshot,
   TimeseriesResponse,
+  Token,
+  UserRead,
 } from './types'
 
 /** Base URL every request is resolved against. Empty means same-origin. */
@@ -33,20 +37,66 @@ export class ApiError extends Error {
 }
 
 /**
+ * Extract the `{"detail": "..."}` message FastAPI puts on every error
+ * response, falling back to a generic message when the body isn't that shape
+ * (a network failure, an HTML error page from a proxy in front of the API).
+ */
+async function errorDetail(response: Response, path: string): Promise<string> {
+  try {
+    const body: unknown = await response.clone().json()
+    if (body && typeof body === 'object' && 'detail' in body) {
+      const detail = (body as { detail: unknown }).detail
+      if (typeof detail === 'string') return detail
+    }
+  } catch {
+    // not JSON — fall through to the generic message
+  }
+  return `${path} responded ${response.status}`
+}
+
+/**
  * Fetch JSON from the API, raising {@link ApiError} on a non-2xx response.
  *
  * @param path Path beginning with `/`, e.g. `/v1/analytics/summary`.
  * @param signal Abort signal so a stale request is dropped when the user
  *   switches API or window before it lands.
+ * @param token Bearer token for routes that require authentication.
  * @returns The parsed response body.
  */
-async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
+async function getJson<T>(path: string, signal?: AbortSignal, token?: string): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     signal,
-    headers: { Accept: 'application/json' },
+    headers: {
+      Accept: 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
   })
   if (!response.ok) {
-    throw new ApiError(response.status, `${path} responded ${response.status}`)
+    throw new ApiError(response.status, await errorDetail(response, path))
+  }
+  return (await response.json()) as T
+}
+
+/**
+ * POST a JSON body to the API, raising {@link ApiError} on a non-2xx response.
+ *
+ * @param path Path beginning with `/`.
+ * @param body Request payload, JSON-serialised.
+ * @param token Bearer token for routes that require authentication.
+ * @returns The parsed response body.
+ */
+async function postJson<T>(path: string, body: unknown, token?: string): Promise<T> {
+  const response = await fetch(`${API_BASE}${path}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(body),
+  })
+  if (!response.ok) {
+    throw new ApiError(response.status, await errorDetail(response, path))
   }
   return (await response.json()) as T
 }
@@ -166,4 +216,28 @@ export function fetchAlerts(windowMin: number, signal?: AbortSignal): Promise<Al
 /** Fetch the latest model-evaluation metrics. */
 export function fetchModelMetrics(signal?: AbortSignal): Promise<ModelMetrics[]> {
   return getJson<ModelMetrics[]>('/v1/models/metrics', signal)
+}
+
+/**
+ * Create an operator account. Always registers as `viewer` — the signup form
+ * has no business minting admins, and the backend defaults to `viewer` when
+ * the field is omitted anyway.
+ */
+export function registerUser(email: string, password: string): Promise<UserRead> {
+  return postJson<UserRead>('/v1/auth/register', { email, password })
+}
+
+/** Exchange credentials for a bearer token. */
+export function login(email: string, password: string): Promise<Token> {
+  return postJson<Token>('/v1/auth/login', { email, password })
+}
+
+/** Fetch the account attached to a bearer token. */
+export function fetchMe(token: string, signal?: AbortSignal): Promise<UserRead> {
+  return getJson<UserRead>('/v1/auth/me', signal, token)
+}
+
+/** Register a new API for monitoring. Requires an authenticated caller. */
+export function createApi(payload: ApiCreatePayload, token: string): Promise<ApiRead> {
+  return postJson<ApiRead>('/v1/apis', payload, token)
 }

@@ -186,7 +186,12 @@ export function LatencyChart({ p50, p95, p99, sloMs, tokens }: LatencyChartProps
             y={sloMs}
             stroke={tokens.status.warning}
             strokeDasharray="4 4"
-            label={{ value: `SLO ${sloMs} ms`, fill: tokens.muted, fontSize: 11, position: 'left' }}
+            label={{
+              value: `SLO ${sloMs} ms`,
+              fill: tokens.muted,
+              fontSize: 11,
+              position: 'insideBottomLeft',
+            }}
           />
           <Line
             type="monotone"
@@ -339,7 +344,7 @@ export function ErrorChart({ errors, sloTarget, tokens }: ErrorChartProps) {
             value: `budget ${budgetPct.toFixed(1)}%`,
             fill: tokens.muted,
             fontSize: 11,
-            position: 'left',
+            position: 'insideBottomLeft',
           }}
         />
         <Area
@@ -391,13 +396,13 @@ export function HealthTimelineChart({ points, tokens }: HealthTimelineChartProps
           y={HEALTHY_SCORE}
           stroke={tokens.status.good}
           strokeDasharray="4 4"
-          label={{ value: 'healthy', fill: tokens.muted, fontSize: 11, position: 'left' }}
+          label={{ value: 'healthy', fill: tokens.muted, fontSize: 11, position: 'insideBottomLeft' }}
         />
         <ReferenceLine
           y={DEGRADED_SCORE}
           stroke={tokens.status.warning}
           strokeDasharray="4 4"
-          label={{ value: 'degraded', fill: tokens.muted, fontSize: 11, position: 'left' }}
+          label={{ value: 'degraded', fill: tokens.muted, fontSize: 11, position: 'insideTopLeft' }}
         />
         <Line
           type="monotone"

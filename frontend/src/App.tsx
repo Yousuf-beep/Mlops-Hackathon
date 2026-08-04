@@ -31,6 +31,7 @@ import {
   LatencyChart,
   TrafficChart,
 } from './components/Charts'
+import { RegisterApiForm, SignInForm } from './components/AuthForms'
 import {
   AlertFeed,
   ApiList,
@@ -40,9 +41,16 @@ import {
   TopSlowEndpoints,
   TrafficDistribution,
 } from './components/Panels'
-import { Empty, Panel, SlaGauge, StatTile } from './components/Primitives'
+import { Empty, Modal, Panel, SlaGauge, StatTile } from './components/Primitives'
 import { compact, millis, percent } from './format'
-import { useAsync, useIncrementalSeries, useLiveSnapshot, useTheme, type LiveState } from './hooks'
+import {
+  useAsync,
+  useAuth,
+  useIncrementalSeries,
+  useLiveSnapshot,
+  useTheme,
+  type LiveState,
+} from './hooks'
 import { chartTokens } from './theme'
 
 /** Selectable look-back windows, in minutes. */
@@ -86,6 +94,8 @@ export default function App() {
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const { choice, setChoice, dark } = useTheme()
   const { snapshot, state, error, tick } = useLiveSnapshot(windowMin)
+  const auth = useAuth()
+  const [openModal, setOpenModal] = useState<'signin' | 'register-api' | null>(null)
 
   const apis = useMemo(() => snapshot?.apis ?? [], [snapshot])
   const tokens = useMemo(() => chartTokens(dark), [dark])
@@ -226,6 +236,32 @@ export default function App() {
               </button>
             ))}
           </div>
+
+          <div className="authbar">
+            {auth.user ? (
+              <>
+                <span className="authbar__user">
+                  {auth.user.email}
+                  <span className="authbar__role">{auth.user.role}</span>
+                </span>
+                <button type="button" className="btn" onClick={() => setOpenModal('register-api')}>
+                  Register API
+                </button>
+                <button type="button" className="btn btn--quiet" onClick={auth.signOut}>
+                  Sign out
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                className="btn btn--primary"
+                onClick={() => setOpenModal('signin')}
+                disabled={auth.resolving}
+              >
+                Sign in
+              </button>
+            )}
+          </div>
         </div>
       </header>
 
@@ -233,6 +269,18 @@ export default function App() {
         <p className="banner" role="alert">
           Cannot reach the PulseGrid API ({error}). Is the backend running on port 8000?
         </p>
+      ) : null}
+
+      {openModal === 'signin' ? (
+        <Modal title="Sign in to PulseGrid" onClose={() => setOpenModal(null)}>
+          <SignInForm auth={auth} onSuccess={() => setOpenModal(null)} />
+        </Modal>
+      ) : null}
+
+      {openModal === 'register-api' && auth.token ? (
+        <Modal title="Register an API" onClose={() => setOpenModal(null)}>
+          <RegisterApiForm token={auth.token} onRegistered={() => setOpenModal(null)} />
+        </Modal>
       ) : null}
 
       <section className="tiles" aria-label="Fleet summary">

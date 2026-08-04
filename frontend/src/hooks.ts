@@ -4,8 +4,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { fetchOverview, streamUrl } from './api'
-import type { Snapshot, TimeseriesPoint } from './types'
+import { fetchMe, fetchOverview, login, registerUser, streamUrl } from './api'
+import type { Snapshot, TimeseriesPoint, UserRead } from './types'
 
 /** Connection state of the live stream, surfaced in the header badge. */
 export type LiveState = 'connecting' | 'live' | 'polling' | 'offline'
@@ -315,4 +315,86 @@ export function useTheme(): {
   }, [choice])
 
   return { choice, setChoice, dark: choice === 'system' ? systemDark : choice === 'dark' }
+}
+
+/** localStorage key the bearer token is persisted under between visits. */
+const TOKEN_KEY = 'pulsegrid.token'
+
+/** What {@link useAuth} returns. */
+export interface Auth {
+  /** The signed-in account, or `null` when signed out or still resolving. */
+  user: UserRead | null
+  /** Bearer token for authenticated requests the caller makes itself. */
+  token: string | null
+  /** True while a stored token is being validated against `/v1/auth/me`. */
+  resolving: boolean
+  signIn: (email: string, password: string) => Promise<void>
+  signUp: (email: string, password: string) => Promise<void>
+  signOut: () => void
+}
+
+/**
+ * Own the signed-in session: a bearer token persisted in `localStorage` so a
+ * refresh doesn't sign the operator out, validated against `GET /v1/auth/me`
+ * on load so a stale or revoked token doesn't render the app as signed in
+ * with nothing behind it.
+ *
+ * @returns The current user/token and the sign-in/up/out actions.
+ */
+export function useAuth(): Auth {
+  const [token, setToken] = useState<string | null>(() => localStorage.getItem(TOKEN_KEY))
+  const [user, setUser] = useState<UserRead | null>(null)
+  const [resolving, setResolving] = useState(() => localStorage.getItem(TOKEN_KEY) !== null)
+
+  useEffect(() => {
+    if (!token) {
+      setUser(null)
+      setResolving(false)
+      return
+    }
+    let cancelled = false
+    const controller = new AbortController()
+    setResolving(true)
+    fetchMe(token, controller.signal)
+      .then((account) => {
+        if (!cancelled) setUser(account)
+      })
+      .catch((cause: unknown) => {
+        // An expired or otherwise invalid token: drop it rather than leaving
+        // the app claiming a session that the API no longer honours.
+        if (!cancelled && !(cause instanceof DOMException)) {
+          localStorage.removeItem(TOKEN_KEY)
+          setToken(null)
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setResolving(false)
+      })
+    return () => {
+      cancelled = true
+      controller.abort()
+    }
+  }, [token])
+
+  const signIn = useCallback(async (email: string, password: string) => {
+    const { access_token: accessToken } = await login(email, password)
+    localStorage.setItem(TOKEN_KEY, accessToken)
+    setToken(accessToken)
+  }, [])
+
+  const signUp = useCallback(
+    async (email: string, password: string) => {
+      await registerUser(email, password)
+      await signIn(email, password)
+    },
+    [signIn],
+  )
+
+  const signOut = useCallback(() => {
+    localStorage.removeItem(TOKEN_KEY)
+    setToken(null)
+    setUser(null)
+  }, [])
+
+  return { user, token, resolving, signIn, signUp, signOut }
 }

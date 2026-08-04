@@ -153,3 +153,49 @@ export function SeverityBadge({ severity }: { severity: string }) {
 export function Empty({ message }: { message: string }) {
   return <p className="empty">{message}</p>
 }
+
+/** Props for {@link Modal}. */
+export interface ModalProps {
+  title: string
+  onClose: () => void
+  children: ReactNode
+}
+
+/**
+ * A centred dialog over a dismissable scrim — used for sign-in and
+ * API-registration, the two flows that need focused input rather than a
+ * dashboard panel.
+ *
+ * Closes on Escape or a click outside the dialog; a click inside is stopped
+ * from bubbling to the scrim so it doesn't close itself while someone's
+ * filling in a field.
+ */
+export function Modal({ title, onClose, children }: ModalProps) {
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [onClose])
+
+  return (
+    <div className="modal__scrim" onClick={onClose}>
+      <div
+        className="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <header className="modal__head">
+          <h2>{title}</h2>
+          <button type="button" className="modal__close" onClick={onClose} aria-label="Close">
+            ✕
+          </button>
+        </header>
+        <div className="modal__body">{children}</div>
+      </div>
+    </div>
+  )
+}

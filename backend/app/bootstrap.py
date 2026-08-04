@@ -24,16 +24,22 @@ from app.models import ApiRegistry, User, UserRole
 
 logger = logging.getLogger(__name__)
 
-#: (name, proxy slug, upstream path, latency SLO in ms) for each demo endpoint.
-#: The SLOs are set just tight enough that ``/slow`` and ``/flaky`` genuinely
-#: breach them — a demo where everything is green demonstrates nothing.
-#: Names stay ASCII on purpose: they travel through the database, JSON and a
-#: terminal, and a decorative separator is the kind of character that survives
-#: none of those reliably.
-DEMO_APIS: tuple[tuple[str, str, str, int], ...] = (
-    ("Demo fast", "demo-fast", "/fast", 250),
-    ("Demo slow", "demo-slow", "/slow", 400),
-    ("Demo flaky", "demo-flaky", "/flaky", 250),
+#: (name, proxy slug, latency SLO in ms) for each demo API. The SLOs are set
+#: just tight enough that ``/slow`` and ``/flaky`` genuinely breach them — a
+#: demo where everything is green demonstrates nothing. Names stay ASCII on
+#: purpose: they travel through the database, JSON and a terminal, and a
+#: decorative separator is the kind of character that survives none of those
+#: reliably.
+#:
+#: ``upstream_url`` is the bare demo-target origin, not one fixed path: each
+#: demo API proxies to *both* its signature route (``/fast``, ``/slow`` or
+#: ``/flaky``) and the shared ``/users/{id}`` route, so per-endpoint dashboard
+#: panels (rankings, heatmap, traffic distribution) have more than one
+#: endpoint to compare per API. The k6 load generator picks the mix.
+DEMO_APIS: tuple[tuple[str, str, int], ...] = (
+    ("Demo fast", "demo-fast", 250),
+    ("Demo slow", "demo-slow", 400),
+    ("Demo flaky", "demo-flaky", 250),
 )
 
 
@@ -77,12 +83,12 @@ def seed_demo_apis(session: Session) -> int:
 
     owner = ensure_admin(session)
     base = settings.DEMO_TARGET_URL.rstrip("/")
-    for name, slug, path, slo_latency_ms in DEMO_APIS:
+    for name, slug, slo_latency_ms in DEMO_APIS:
         session.add(
             ApiRegistry(
                 name=name,
                 base_url=f"/{slug}",
-                upstream_url=f"{base}{path}",
+                upstream_url=base,
                 owner_user_id=owner.id or 0,
                 auth_type="none",
                 slo_target=0.99,
