@@ -1,6 +1,6 @@
 # PulseGrid
 
-[![CI](https://github.com/OWNER/REPO/actions/workflows/ci.yml/badge.svg)](https://github.com/OWNER/REPO/actions/workflows/ci.yml)
+[![CI](https://github.com/Yousuf-beep/Mlops-Hackathon/actions/workflows/ci.yml/badge.svg)](https://github.com/Yousuf-beep/Mlops-Hackathon/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Python 3.12](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
 [![PostgreSQL 17](https://img.shields.io/badge/postgres-17--alpine-336791.svg)](https://www.postgresql.org/)
@@ -406,7 +406,7 @@ pull request to `main`, with in-progress runs cancelled when superseded.
 | **migrate** | Spins up a real `postgres:17-alpine` service, runs `alembic upgrade head`, asserts `ix_request_log_time_brin` **and** `ix_request_log_api_id_time` exist, then runs `alembic check` to prove models and migrations have not drifted |
 | **docker** | Needs all three. Builds the backend image with Buildx + GHA layer cache. On **push to `main` only**, logs in with `GITHUB_TOKEN` and pushes to `ghcr.io/<owner>/<repo>` tagged with the commit `sha` and `latest`. Pull requests build but publish nothing. |
 
-> Replace `OWNER/REPO` in the badge URL at the top of this file once the
+> Replace `Yousuf-beep/Mlops-Hackathon` in the badge URL at the top of this file once the
 > repository is pushed to GitHub.
 
 ---
