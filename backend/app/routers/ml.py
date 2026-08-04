@@ -18,6 +18,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from sqlmodel import Session, col, select
 
+from app import analytics as queries
 from app.database import get_session
 from app.jobs.ml_jobs import load_rollups
 from app.ml import metrics_store
@@ -129,7 +130,7 @@ def anomalies(
     session: SessionDep,
     window_min: Annotated[int, Query(ge=1, le=1440, description="Look-back minutes.")] = 240,
     limit: Annotated[int, Query(ge=1, le=200, description="Maximum alerts.")] = 50,
-) -> list[Alert]:
+) -> list[AnomalyRead]:
     """Return anomalies detected in the recent window, newest first.
 
     Args:
@@ -139,7 +140,7 @@ def anomalies(
         limit: Maximum number of alerts to return.
 
     Returns:
-        list[Alert]: Alerts raised in the window, newest first.
+        list[AnomalyRead]: Alerts raised in the window, newest first.
     """
     _require_api(api_id, session)
     since = utcnow() - timedelta(minutes=window_min)
@@ -149,7 +150,7 @@ def anomalies(
         .order_by(col(Alert.fired_at).desc())
         .limit(limit)
     )
-    return list(session.exec(statement).all())
+    return queries.anomaly_reads(session, list(session.exec(statement).all()))
 
 
 @router.get(
@@ -162,7 +163,7 @@ def alerts(
     window_min: Annotated[int, Query(ge=1, le=1440, description="Look-back minutes.")] = 240,
     limit: Annotated[int, Query(ge=1, le=200, description="Maximum alerts.")] = 50,
     open_only: Annotated[bool, Query(description="Exclude alerts that already cleared.")] = False,
-) -> list[Alert]:
+) -> list[AnomalyRead]:
     """Return the fleet's recent alerts for the dashboard's incident panel.
 
     Args:
@@ -172,14 +173,14 @@ def alerts(
         open_only: When true, only alerts that are still firing.
 
     Returns:
-        list[Alert]: Alerts across every API, newest first.
+        list[AnomalyRead]: Alerts across every API, newest first.
     """
     since = utcnow() - timedelta(minutes=window_min)
     statement = select(Alert).where(col(Alert.fired_at) >= since)
     if open_only:
         statement = statement.where(col(Alert.resolved_at).is_(None))
     statement = statement.order_by(col(Alert.fired_at).desc()).limit(limit)
-    return list(session.exec(statement).all())
+    return queries.anomaly_reads(session, list(session.exec(statement).all()))
 
 
 @router.get(

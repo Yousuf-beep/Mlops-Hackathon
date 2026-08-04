@@ -2,10 +2,10 @@
  * Data-loading and theming hooks for the dashboard.
  */
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { fetchOverview, streamUrl } from './api'
-import type { Snapshot } from './types'
+import type { Snapshot, TimeseriesPoint } from './types'
 
 /** Connection state of the live stream, surfaced in the header badge. */
 export type LiveState = 'connecting' | 'live' | 'polling' | 'offline'
@@ -163,6 +163,115 @@ export function useAsync<T>(
   }, deps)
 
   return { data, loading }
+}
+
+/** What {@link useIncrementalSeries} returns. */
+export interface IncrementalSeries {
+  points: TimeseriesPoint[]
+  loading: boolean
+}
+
+/**
+ * The bucket to resume an incremental fetch from.
+ *
+ * The *second*-to-last point, not the last: `metric_rollup`'s current minute
+ * keeps accumulating as more requests land in it, so re-requesting from one
+ * bucket earlier lets a still-forming bucket's value be replaced rather than
+ * frozen at whatever it read when it first appeared.
+ */
+function resumeCursor(points: TimeseriesPoint[]): string | undefined {
+  return points.length >= 2 ? points[points.length - 2].bucket : undefined
+}
+
+/** Merge freshly fetched points into the buffer, replacing same-bucket entries. */
+function mergeByBucket(previous: TimeseriesPoint[], fresh: TimeseriesPoint[]): TimeseriesPoint[] {
+  if (!fresh.length) return previous
+  const byBucket = new Map(previous.map((point) => [point.bucket, point] as const))
+  for (const point of fresh) byBucket.set(point.bucket, point)
+  return [...byBucket.values()].sort((a, b) => a.bucket.localeCompare(b.bucket))
+}
+
+/**
+ * Load a Golden-Signal series that grows by appending rather than by
+ * re-fetching its whole window on every SSE tick.
+ *
+ * A full fetch runs whenever `resetDeps` changes (the caller switched API or
+ * look-back window); every later tick asks the backend only for points at or
+ * after {@link resumeCursor} and merges them in, so a live dashboard costs one
+ * small request per tick per series instead of one full-window request.
+ *
+ * @param loader Fetches points; receives `undefined` for a full window fetch
+ *   or an ISO bucket cursor for an incremental one.
+ * @param resetDeps Values that trigger a full refetch when they change (e.g.
+ *   `[apiId, windowMin]`). Forwarded verbatim as the effect's dependency list,
+ *   same convention as {@link useAsync}.
+ * @param tick Bumped by {@link useLiveSnapshot} on every SSE frame; each bump
+ *   after the initial load triggers one incremental fetch.
+ * @returns The buffered series and whether the initial load is in flight.
+ */
+export function useIncrementalSeries(
+  loader: (since: string | undefined, signal: AbortSignal) => Promise<TimeseriesPoint[]>,
+  resetDeps: readonly unknown[],
+  tick: number,
+): IncrementalSeries {
+  const [points, setPoints] = useState<TimeseriesPoint[]>([])
+  const [loading, setLoading] = useState(true)
+  const cursorRef = useRef<string | undefined>(undefined)
+  const readyRef = useRef(false)
+
+  // oxlint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const controller = new AbortController()
+    let cancelled = false
+    readyRef.current = false
+    setLoading(true)
+
+    loader(undefined, controller.signal)
+      .then((fresh) => {
+        if (cancelled) return
+        setPoints(fresh)
+        cursorRef.current = resumeCursor(fresh)
+        readyRef.current = true
+        setLoading(false)
+      })
+      .catch(() => {
+        if (!cancelled) setLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+      controller.abort()
+    }
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
+  }, resetDeps)
+
+  useEffect(() => {
+    if (!readyRef.current) return
+    const controller = new AbortController()
+    let cancelled = false
+
+    loader(cursorRef.current, controller.signal)
+      .then((fresh) => {
+        if (cancelled) return
+        setPoints((previous) => {
+          const merged = mergeByBucket(previous, fresh)
+          cursorRef.current = resumeCursor(merged)
+          return merged
+        })
+      })
+      .catch(() => {
+        // A missed incremental tick self-heals on the next one; no need to
+        // surface a transient network blip as a loading/error state.
+      })
+
+    return () => {
+      cancelled = true
+      controller.abort()
+    }
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
+  }, [tick])
+
+  return { points, loading }
 }
 
 /** Theme preference: follow the OS, or an explicit override. */

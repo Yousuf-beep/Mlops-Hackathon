@@ -178,6 +178,21 @@
   color: var(--critical);
 }
 
+/* A brief highlight whenever a tile's value changes, so a live-updating
+   number reads as "just moved" rather than the page having silently reloaded. */
+.tile--flash {
+  animation: tileFlash 0.6s ease;
+}
+
+@keyframes tileFlash {
+  0% {
+    box-shadow: 0 0 0 2px var(--accent-soft);
+  }
+  100% {
+    box-shadow: var(--shadow);
+  }
+}
+
 /* --- grid and panels ----------------------------------------------------- */
 
 .grid {
@@ -472,6 +487,155 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* --- SLA gauge ------------------------------------------------------------ */
+
+.sla {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 6.5rem;
+}
+
+.sla__track {
+  position: relative;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  overflow: visible;
+}
+
+.sla__fill {
+  position: absolute;
+  inset: 0;
+  width: 0;
+  border-radius: 999px;
+  transition: width 0.4s ease;
+}
+
+.sla__fill--good {
+  background: var(--good);
+}
+
+.sla__fill--critical {
+  background: var(--critical);
+}
+
+.sla__target {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 2px;
+  background: var(--text);
+  opacity: 0.45;
+}
+
+.sla__label {
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-2);
+}
+
+.sla__vs {
+  color: var(--muted);
+}
+
+/* --- ranked bar lists (top-slow, top-failing, traffic distribution) ------ */
+
+.ranklist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.ranklist__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6rem;
+  font-size: 0.8rem;
+  margin-bottom: 0.2rem;
+}
+
+.ranklist__row code {
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ranklist__row span {
+  flex: none;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.76rem;
+}
+
+.ranklist__track {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.ranklist__fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.4s ease;
+}
+
+.ranklist__fill--accent {
+  background: var(--accent);
+}
+
+.ranklist__fill--warning {
+  background: var(--warning);
+}
+
+.ranklist__fill--critical {
+  background: var(--critical);
+}
+
+/* --- heatmap --------------------------------------------------------------*/
+
+.heatmap {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.72rem;
+}
+
+.heatmap th,
+.heatmap td {
+  padding: 2px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.heatmap thead th {
+  color: var(--muted);
+  font-weight: 500;
+  font-size: 0.68rem;
+}
+
+.heatmap tbody th {
+  text-align: left;
+  padding-right: 0.5rem;
+  font-weight: 500;
+  color: var(--text-2);
+}
+
+.heatmap__cell {
+  display: block;
+  width: 100%;
+  min-width: 0.85rem;
+  height: 1rem;
+  border-radius: 3px;
+}
+
 /* --- footer -------------------------------------------------------------- */
 
 .foot {
@@ -486,8 +650,14 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .brand__pulse {
+  .brand__pulse,
+  .tile--flash {
     animation: none;
+  }
+
+  .sla__fill,
+  .ranklist__fill {
+    transition: none;
   }
 }
 

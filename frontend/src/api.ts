@@ -11,6 +11,8 @@ import type {
   Alert,
   EndpointBreakdownResponse,
   ForecastResponse,
+  HealthTimelineResponse,
+  HeatmapResponse,
   ModelMetrics,
   Snapshot,
   TimeseriesResponse,
@@ -59,39 +61,78 @@ export function fetchOverview(windowMin: number, signal?: AbortSignal): Promise<
   return getJson<Snapshot>(`/v1/analytics/overview?window_min=${windowMin}`, signal)
 }
 
-/** Fetch a latency percentile series for one API. */
+/** Appends `&since=` when supplied, for an incremental (append-only) fetch. */
+function sinceParam(since?: string): string {
+  return since ? `&since=${encodeURIComponent(since)}` : ''
+}
+
+/**
+ * Fetch a latency percentile series for one API.
+ *
+ * @param since When supplied, restricts the response to points at or after
+ *   the second-to-last point the caller already holds — the live-updating
+ *   "current minute" bucket is intentionally re-sent so a chart merging by
+ *   bucket picks up its revisions instead of freezing until it closes.
+ */
 export function fetchLatency(
   apiId: number,
   windowMin: number,
   percentile: 'p50' | 'p95' | 'p99' | 'avg',
   signal?: AbortSignal,
+  since?: string,
 ): Promise<TimeseriesResponse> {
   return getJson<TimeseriesResponse>(
-    `/v1/analytics/latency?api_id=${apiId}&window_min=${windowMin}&percentile=${percentile}`,
+    `/v1/analytics/latency?api_id=${apiId}&window_min=${windowMin}&percentile=${percentile}${sinceParam(since)}`,
     signal,
   )
 }
 
-/** Fetch the requests-per-minute series for one API. */
+/** Fetch the requests-per-minute series for one API. See {@link fetchLatency} re: `since`. */
 export function fetchTraffic(
   apiId: number,
   windowMin: number,
   signal?: AbortSignal,
+  since?: string,
 ): Promise<TimeseriesResponse> {
   return getJson<TimeseriesResponse>(
-    `/v1/analytics/traffic?api_id=${apiId}&window_min=${windowMin}`,
+    `/v1/analytics/traffic?api_id=${apiId}&window_min=${windowMin}${sinceParam(since)}`,
     signal,
   )
 }
 
-/** Fetch the error-rate series for one API. */
+/** Fetch the error-rate series for one API. See {@link fetchLatency} re: `since`. */
 export function fetchErrors(
   apiId: number,
   windowMin: number,
   signal?: AbortSignal,
+  since?: string,
 ): Promise<TimeseriesResponse> {
   return getJson<TimeseriesResponse>(
-    `/v1/analytics/errors?api_id=${apiId}&window_min=${windowMin}`,
+    `/v1/analytics/errors?api_id=${apiId}&window_min=${windowMin}${sinceParam(since)}`,
+    signal,
+  )
+}
+
+/** Fetch one API's health-score history, for the up/down timeline panel. */
+export function fetchHealthTimeline(
+  apiId: number,
+  windowMin: number,
+  signal?: AbortSignal,
+): Promise<HealthTimelineResponse> {
+  return getJson<HealthTimelineResponse>(
+    `/v1/analytics/health-timeline?api_id=${apiId}&window_min=${windowMin}`,
+    signal,
+  )
+}
+
+/** Fetch the (time x endpoint) request-volume heatmap for one API. */
+export function fetchHeatmap(
+  apiId: number,
+  windowMin: number,
+  signal?: AbortSignal,
+): Promise<HeatmapResponse> {
+  return getJson<HeatmapResponse>(
+    `/v1/analytics/heatmap?api_id=${apiId}&window_min=${windowMin}`,
     signal,
   )
 }

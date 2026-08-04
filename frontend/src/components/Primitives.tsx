@@ -2,9 +2,9 @@
  * Small presentational building blocks shared across the dashboard.
  */
 
-import type { ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 
-import { STATUS_LABEL } from '../format'
+import { percent, STATUS_LABEL } from '../format'
 import { SEVERITY_COLOR, STATUS_COLOR } from '../theme'
 
 /** Props for {@link Panel}. */
@@ -45,16 +45,71 @@ export interface StatTileProps {
   tone?: 'neutral' | 'good' | 'warning' | 'critical'
 }
 
+/** How long the change highlight stays on a tile after its value updates. */
+const FLASH_MS = 600
+
 /**
  * A single headline number. Deliberately not a chart: one value over one window
  * has no shape worth plotting.
+ *
+ * Briefly highlights itself whenever `value` changes so a live SSE-driven tile
+ * reads as *updating* rather than the page having silently refreshed under it.
  */
 export function StatTile({ label, value, sub, tone = 'neutral' }: StatTileProps) {
+  const previous = useRef(value)
+  const [flash, setFlash] = useState(false)
+
+  useEffect(() => {
+    if (previous.current === value) return
+    previous.current = value
+    setFlash(true)
+    const timer = window.setTimeout(() => setFlash(false), FLASH_MS)
+    return () => window.clearTimeout(timer)
+  }, [value])
+
   return (
-    <div className={`tile tile--${tone}`}>
+    <div className={flash ? `tile tile--${tone} tile--flash` : `tile tile--${tone}`}>
       <span className="tile__label">{label}</span>
       <strong className="tile__value">{value}</strong>
       <span className="tile__sub">{sub ?? ' '}</span>
+    </div>
+  )
+}
+
+/** Props for {@link SlaGauge}. */
+export interface SlaGaugeProps {
+  availability: number
+  sloTarget: number
+}
+
+/**
+ * A compact SLA indicator: current availability against its objective.
+ *
+ * A filled track plus a tick mark at the target reads faster than a number
+ * pair, and the fill's colour (good/critical) restates the same verdict the
+ * position already shows, so the state is never colour-alone.
+ */
+export function SlaGauge({ availability, sloTarget }: SlaGaugeProps) {
+  const met = availability >= sloTarget
+  const fillPct = Math.min(100, Math.max(0, availability * 100))
+  const targetPct = Math.min(100, Math.max(0, sloTarget * 100))
+
+  return (
+    <div
+      className="sla"
+      role="img"
+      aria-label={`Availability ${percent(availability * 100, 2)} against a ${percent(targetPct, 2)} SLO target, ${met ? 'meeting' : 'missing'} it`}
+    >
+      <div className="sla__track">
+        <div
+          className={met ? 'sla__fill sla__fill--good' : 'sla__fill sla__fill--critical'}
+          style={{ width: `${fillPct}%` }}
+        />
+        <div className="sla__target" style={{ left: `${targetPct}%` }} />
+      </div>
+      <span className="sla__label">
+        {percent(availability * 100, 2)} <span className="sla__vs">/ {percent(targetPct, 2)} SLO</span>
+      </span>
     </div>
   )
 }

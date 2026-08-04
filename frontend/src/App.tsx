@@ -18,15 +18,31 @@ import {
   fetchEndpoints,
   fetchErrors,
   fetchForecast,
+  fetchHealthTimeline,
+  fetchHeatmap,
   fetchLatency,
   fetchModelMetrics,
   fetchTraffic,
 } from './api'
-import { ErrorChart, LatencyChart, TrafficChart } from './components/Charts'
-import { AlertFeed, ApiList, EndpointTable, ModelPanel } from './components/Panels'
-import { Empty, Panel, StatTile } from './components/Primitives'
+import {
+  ErrorChart,
+  HealthTimelineChart,
+  HeatmapChart,
+  LatencyChart,
+  TrafficChart,
+} from './components/Charts'
+import {
+  AlertFeed,
+  ApiList,
+  EndpointTable,
+  ModelPanel,
+  TopFailingEndpoints,
+  TopSlowEndpoints,
+  TrafficDistribution,
+} from './components/Panels'
+import { Empty, Panel, SlaGauge, StatTile } from './components/Primitives'
 import { compact, millis, percent } from './format'
-import { useAsync, useLiveSnapshot, useTheme, type LiveState } from './hooks'
+import { useAsync, useIncrementalSeries, useLiveSnapshot, useTheme, type LiveState } from './hooks'
 import { chartTokens } from './theme'
 
 /** Selectable look-back windows, in minutes. */
@@ -84,23 +100,53 @@ export default function App() {
   }, [apis])
 
   const selected = apis.find((api) => api.api_id === selectedId) ?? null
-  const apiNames = useMemo(() => new Map(apis.map((api) => [api.api_id, api.name] as const)), [apis])
 
-  const latency = useAsync(
-    async (signal) =>
+  // Latency, traffic and errors are the three series that grow every tick
+  // rather than being recomputed from scratch: each fetch after the first
+  // asks only for points at/after what's already buffered and appends,
+  // instead of re-pulling the whole look-back window on every SSE frame.
+  const latencyP50 = useIncrementalSeries(
+    (since, signal) =>
       selectedId === null
-        ? null
-        : Promise.all([
-            fetchLatency(selectedId, windowMin, 'p50', signal),
-            fetchLatency(selectedId, windowMin, 'p95', signal),
-            fetchLatency(selectedId, windowMin, 'p99', signal),
-          ]),
-    [selectedId, windowMin, tick],
+        ? Promise.resolve([])
+        : fetchLatency(selectedId, windowMin, 'p50', signal, since).then((r) => r.points),
+    [selectedId, windowMin],
+    tick,
+  )
+  const latencyP95 = useIncrementalSeries(
+    (since, signal) =>
+      selectedId === null
+        ? Promise.resolve([])
+        : fetchLatency(selectedId, windowMin, 'p95', signal, since).then((r) => r.points),
+    [selectedId, windowMin],
+    tick,
+  )
+  const latencyP99 = useIncrementalSeries(
+    (since, signal) =>
+      selectedId === null
+        ? Promise.resolve([])
+        : fetchLatency(selectedId, windowMin, 'p99', signal, since).then((r) => r.points),
+    [selectedId, windowMin],
+    tick,
+  )
+  const latencyLoading = latencyP50.loading || latencyP95.loading || latencyP99.loading
+
+  const traffic = useIncrementalSeries(
+    (since, signal) =>
+      selectedId === null
+        ? Promise.resolve([])
+        : fetchTraffic(selectedId, windowMin, signal, since).then((r) => r.points),
+    [selectedId, windowMin],
+    tick,
   )
 
-  const traffic = useAsync(
-    async (signal) => (selectedId === null ? null : fetchTraffic(selectedId, windowMin, signal)),
-    [selectedId, windowMin, tick],
+  const errorSeries = useIncrementalSeries(
+    (since, signal) =>
+      selectedId === null
+        ? Promise.resolve([])
+        : fetchErrors(selectedId, windowMin, signal, since).then((r) => r.points),
+    [selectedId, windowMin],
+    tick,
   )
 
   const forecast = useAsync(
@@ -109,13 +155,19 @@ export default function App() {
     [selectedId, tick],
   )
 
-  const errorSeries = useAsync(
-    async (signal) => (selectedId === null ? null : fetchErrors(selectedId, windowMin, signal)),
+  const endpoints = useAsync(
+    async (signal) => (selectedId === null ? null : fetchEndpoints(selectedId, windowMin, signal)),
     [selectedId, windowMin, tick],
   )
 
-  const endpoints = useAsync(
-    async (signal) => (selectedId === null ? null : fetchEndpoints(selectedId, windowMin, signal)),
+  const healthTimeline = useAsync(
+    async (signal) =>
+      selectedId === null ? null : fetchHealthTimeline(selectedId, windowMin, signal),
+    [selectedId, windowMin, tick],
+  )
+
+  const heatmap = useAsync(
+    async (signal) => (selectedId === null ? null : fetchHeatmap(selectedId, windowMin, signal)),
     [selectedId, windowMin, tick],
   )
 
@@ -218,16 +270,16 @@ export default function App() {
           title="Latency percentiles"
           hint={selected ? `${selected.name} · p50 / p95 / p99` : 'Select an API'}
         >
-          {selected && latency.data ? (
+          {selected && !latencyLoading ? (
             <LatencyChart
-              p50={latency.data[0].points}
-              p95={latency.data[1].points}
-              p99={latency.data[2].points}
+              p50={latencyP50.points}
+              p95={latencyP95.points}
+              p99={latencyP99.points}
               sloMs={selected.slo_latency_ms}
               tokens={tokens}
             />
           ) : (
-            <Empty message={latency.loading ? 'Loading…' : 'No API selected.'} />
+            <Empty message={latencyLoading ? 'Loading…' : 'No API selected.'} />
           )}
         </Panel>
 
@@ -235,9 +287,9 @@ export default function App() {
           title="Traffic and forecast"
           hint={`Requests per minute, with the next ${FORECAST_HORIZON_MIN} minutes predicted`}
         >
-          {selected && traffic.data ? (
+          {selected && !traffic.loading ? (
             <TrafficChart
-              traffic={traffic.data.points}
+              traffic={traffic.points}
               forecast={forecast.data?.points ?? []}
               forecastFrom={forecast.data?.generated_at ?? null}
               tokens={tokens}
@@ -251,12 +303,8 @@ export default function App() {
           title="Error rate"
           hint={selected ? `Against a ${percent((1 - selected.slo_target) * 100, 1)} budget` : ''}
         >
-          {selected && errorSeries.data ? (
-            <ErrorChart
-              errors={errorSeries.data.points}
-              sloTarget={selected.slo_target}
-              tokens={tokens}
-            />
+          {selected && !errorSeries.loading ? (
+            <ErrorChart errors={errorSeries.points} sloTarget={selected.slo_target} tokens={tokens} />
           ) : (
             <Empty message={errorSeries.loading ? 'Loading…' : 'No API selected.'} />
           )}
@@ -269,8 +317,48 @@ export default function App() {
           />
         </Panel>
 
+        <Panel
+          title="Health timeline & SLA"
+          hint={selected ? `${selected.name} · score history and availability vs. objective` : ''}
+          actions={
+            selected ? (
+              <SlaGauge availability={selected.availability} sloTarget={selected.slo_target} />
+            ) : null
+          }
+        >
+          {selected && healthTimeline.data ? (
+            <HealthTimelineChart points={healthTimeline.data.points} tokens={tokens} />
+          ) : (
+            <Empty message={healthTimeline.loading ? 'Loading…' : 'No API selected.'} />
+          )}
+        </Panel>
+
+        <Panel
+          title="Request heatmap"
+          hint={selected ? 'Busiest endpoints × time, this window' : 'Select an API'}
+          wide
+        >
+          {selected && heatmap.data ? (
+            <HeatmapChart cells={heatmap.data.cells} tokens={tokens} />
+          ) : (
+            <Empty message={heatmap.loading ? 'Loading…' : 'No API selected.'} />
+          )}
+        </Panel>
+
+        <Panel title="Top slow endpoints" hint="By p95 latency, this window">
+          <TopSlowEndpoints endpoints={endpoints.data?.endpoints ?? []} />
+        </Panel>
+
+        <Panel title="Top failing endpoints" hint="By error rate, this window">
+          <TopFailingEndpoints endpoints={endpoints.data?.endpoints ?? []} />
+        </Panel>
+
+        <Panel title="Traffic distribution" hint="Share of requests per endpoint">
+          <TrafficDistribution endpoints={endpoints.data?.endpoints ?? []} />
+        </Panel>
+
         <Panel title="Detected anomalies" hint="Robust z-score and IsolationForest, with reasons">
-          <AlertFeed alerts={alerts.data ?? []} apiNames={apiNames} />
+          <AlertFeed alerts={alerts.data ?? []} />
         </Panel>
 
         <Panel title="Model metrics" hint="Last refit, against the seasonal-naive baseline">

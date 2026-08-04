@@ -54,6 +54,36 @@ MIN_BASELINE_SAMPLES = 8
 _CRITICAL_MULTIPLE = 2.0
 _WARNING_MULTIPLE = 1.0
 
+#: Per-detector scale for turning a raw score into a 0-1 confidence, chosen so
+#: a score right at the firing threshold reads as ~50% confident and climbs
+#: towards (but never reaches) 100% for increasingly extreme scores. The two
+#: detectors report scores on unrelated scales (sigma units vs. an
+#: IsolationForest decision function), so each gets its own scale rather than
+#: one constant that would misread as over- or under-confident for the other.
+_CONFIDENCE_SCALE = {"robust_zscore": DEFAULT_Z_THRESHOLD, "isolation_forest": 0.15}
+
+
+def confidence_from_score(score: float, detector: str) -> float:
+    """Squash a detector score into an operator-facing 0-1 confidence.
+
+    This is a monotonic heuristic, not a calibrated probability: neither
+    detector is trained against labelled incidents, so there is nothing to
+    calibrate against. It exists so the dashboard can show *how* anomalous a
+    finding is at a glance, on top of the ``severity`` bucket it already gets.
+
+    Args:
+        score: The detector's own score (already computed for severity and
+            the explanation text — this reuses it rather than adding a second
+            signal).
+        detector: Which detector produced the score, selecting its scale.
+
+    Returns:
+        float: Confidence in ``[0, 0.99]``, rounded to 3 places.
+    """
+    scale = _CONFIDENCE_SCALE.get(detector, DEFAULT_Z_THRESHOLD)
+    magnitude = abs(score)
+    return round(min(0.99, magnitude / (magnitude + scale)), 3)
+
 #: Human-facing units per signal, used when rendering explanations.
 _UNITS = {
     "latency": "ms",
@@ -79,6 +109,7 @@ class AnomalyResult:
         explanation: Human-readable reason, rendered for the dashboard.
         detector: Which detector fired (``robust_zscore`` or
             ``isolation_forest``).
+        confidence: 0-1 heuristic confidence, see :func:`confidence_from_score`.
     """
 
     signal: str
@@ -89,6 +120,7 @@ class AnomalyResult:
     severity: str
     explanation: str
     detector: str
+    confidence: float
 
 
 def robust_zscore(series: pd.Series, window: int = 30, threshold: float = 3.5) -> pd.Series:
@@ -291,6 +323,7 @@ def detect(rollups: pd.DataFrame, slo_latency_ms: int = 500) -> list[AnomalyResu
                 severity=severity,
                 explanation="",
                 detector="robust_zscore",
+                confidence=confidence_from_score(score, "robust_zscore"),
             )
         )
 
@@ -340,4 +373,5 @@ def _isolation_forest_finding(grouped: pd.DataFrame) -> AnomalyResult | None:
         severity="warning",
         explanation="",
         detector="isolation_forest",
+        confidence=confidence_from_score(score, "isolation_forest"),
     )

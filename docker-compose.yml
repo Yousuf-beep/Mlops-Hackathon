@@ -104,6 +104,27 @@ services:
     ports:
       - "5173:8080"
 
+  loadgen:
+    # Drives real traffic through the reverse proxy (see load/k6/traffic.js)
+    # so the dashboard shows a live system rather than the prober's occasional
+    # heartbeat. Runs on its own in this container; PulseGrid never talks to
+    # k6 directly. `restart: unless-stopped` re-runs the (finite) traffic
+    # pattern in a loop, so the fleet never goes quiet on its own.
+    #
+    # To run PulseGrid without synthetic load: `docker compose up --scale loadgen=0`,
+    # or comment this service out.
+    image: grafana/k6:latest
+    container_name: pulsegrid-loadgen
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    environment:
+      BASE_URL: http://api:8000
+    volumes:
+      - ./load/k6:/scripts:ro
+    command: ["run", "--no-usage-report", "/scripts/traffic.js"]
+
 volumes:
   pgdata:
     name: pulsegrid-pgdata

@@ -65,6 +65,25 @@ def utcnow() -> datetime:
     return datetime.now(UTC)
 
 
+def as_utc(value: datetime) -> datetime:
+    """Return ``value`` as a timezone-aware UTC datetime.
+
+    SQLite has no ``timestamptz``, so values round-trip as naive even though
+    they were written by :func:`utcnow`. Treating a naive value as already UTC
+    matches how it was written, and lets code that mixes freshly computed
+    ``utcnow()`` values with values read back from either engine compare them
+    without raising ``TypeError: can't compare offset-naive and
+    offset-aware datetimes``.
+
+    Args:
+        value: A timestamp, naive or aware.
+
+    Returns:
+        datetime: The same instant, tagged UTC.
+    """
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
+
+
 # --------------------------------------------------------------------------- #
 # Enumerations (stored as plain VARCHAR, not native PostgreSQL ENUM types)      #
 # --------------------------------------------------------------------------- #
@@ -320,6 +339,9 @@ class Alert(SQLModel, table=True):
         explanation: Why the alert fired, in plain English.
         metric_value: The observed value that triggered it.
         expected_range: Rendered expected band, e.g. ``"120-180 ms"``.
+        confidence: 0-1 heuristic confidence from the detector that fired,
+            see :func:`app.ml.anomaly.confidence_from_score`. ``None`` for
+            alert types that do not come from the ML detectors.
         fired_at: When the alert was raised (UTC).
         resolved_at: When it cleared, or ``None`` while still firing.
     """
@@ -342,6 +364,7 @@ class Alert(SQLModel, table=True):
     explanation: str = Field(sa_column=Column(Text, nullable=False))
     metric_value: float = Field(sa_column=Column(Float, nullable=False))
     expected_range: str = Field(sa_column=Column(String(64), nullable=False))
+    confidence: float | None = Field(default=None, sa_column=Column(Float, nullable=True))
     fired_at: datetime = Field(
         default_factory=utcnow,
         sa_column=Column(DateTime(timezone=True), nullable=False, server_default=func.now()),
@@ -395,5 +418,6 @@ __all__ = [
     "RequestLog",
     "User",
     "UserRole",
+    "as_utc",
     "utcnow",
 ]

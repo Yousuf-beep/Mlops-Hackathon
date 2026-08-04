@@ -27,7 +27,7 @@ import {
 
 import { clock, millis, percent } from '../format'
 import type { ChartTokens } from '../theme'
-import type { ForecastPoint, TimeseriesPoint } from '../types'
+import type { ForecastPoint, HealthTimelinePoint, HeatmapCell, TimeseriesPoint } from '../types'
 import { Empty } from './Primitives'
 
 /** Height every chart renders at, so the panels line up across the grid. */
@@ -354,5 +354,170 @@ export function ErrorChart({ errors, sloTarget, tokens }: ErrorChartProps) {
         />
       </ComposedChart>
     </ResponsiveContainer>
+  )
+}
+
+/** Score thresholds mirrored from the backend's traffic-light status bands. */
+const HEALTHY_SCORE = 90
+const DEGRADED_SCORE = 70
+
+/** Props for {@link HealthTimelineChart}. */
+export interface HealthTimelineChartProps {
+  points: HealthTimelinePoint[]
+  tokens: ChartTokens
+}
+
+/**
+ * An API's composite health score over time — the up/down history behind the
+ * single "score right now" number on its fleet row.
+ *
+ * One series, so no legend box; the two reference lines carry the same
+ * healthy/degraded thresholds the traffic-light status on every other panel
+ * already uses, so a reader does not have to learn a second scale.
+ */
+export function HealthTimelineChart({ points, tokens }: HealthTimelineChartProps) {
+  const data = mergeSeries({ score: points.map((point) => ({ bucket: point.bucket, value: point.score })) })
+  if (!data.length) return <Empty message="No health history in this window yet." />
+
+  return (
+    <ResponsiveContainer width="100%" height={CHART_HEIGHT}>
+      <ComposedChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+        {axes(tokens, (value) => `${Math.round(value)}`)}
+        <Tooltip
+          content={tooltipContent((value) => value.toFixed(1))}
+          cursor={{ stroke: tokens.axis, strokeWidth: 1 }}
+        />
+        <ReferenceLine
+          y={HEALTHY_SCORE}
+          stroke={tokens.status.good}
+          strokeDasharray="4 4"
+          label={{ value: 'healthy', fill: tokens.muted, fontSize: 11, position: 'left' }}
+        />
+        <ReferenceLine
+          y={DEGRADED_SCORE}
+          stroke={tokens.status.warning}
+          strokeDasharray="4 4"
+          label={{ value: 'degraded', fill: tokens.muted, fontSize: 11, position: 'left' }}
+        />
+        <Line
+          type="monotone"
+          dataKey="score"
+          name="Health score"
+          stroke={tokens.series[0]}
+          strokeWidth={2}
+          dot={false}
+          isAnimationActive={false}
+        />
+      </ComposedChart>
+    </ResponsiveContainer>
+  )
+}
+
+/** Parse a `#rrggbb` hex color into its RGB components. */
+function hexToRgb(hex: string): [number, number, number] {
+  const value = Number.parseInt(hex.replace('#', ''), 16)
+  return [(value >> 16) & 255, (value >> 8) & 255, value & 255]
+}
+
+/** Number of heatmap columns to bin buckets into, regardless of window length. */
+const HEATMAP_COLUMNS = 24
+
+/** One binned column: its label and, per endpoint, its summed request count. */
+interface HeatmapColumn {
+  label: string
+  byEndpoint: Map<string, number>
+}
+
+/**
+ * Group raw per-minute heatmap cells into a fixed number of display columns.
+ *
+ * A 6-hour window has 360 one-minute buckets; rendering one column per bucket
+ * would make the grid illegible and mostly off-screen. Binning to a constant
+ * column count keeps the heatmap's shape independent of the look-back window.
+ */
+function binHeatmap(cells: HeatmapCell[], maxColumns: number): HeatmapColumn[] {
+  const buckets = [...new Set(cells.map((cell) => cell.bucket))].sort()
+  if (!buckets.length) return []
+  const groupSize = Math.max(1, Math.ceil(buckets.length / maxColumns))
+  const byKey = new Map(cells.map((cell) => [`${cell.bucket}|${cell.endpoint}`, cell.req_count]))
+
+  const columns: HeatmapColumn[] = []
+  for (let start = 0; start < buckets.length; start += groupSize) {
+    const group = buckets.slice(start, start + groupSize)
+    const byEndpoint = new Map<string, number>()
+    for (const cell of cells) {
+      if (!group.includes(cell.bucket)) continue
+      byEndpoint.set(cell.endpoint, (byEndpoint.get(cell.endpoint) ?? 0) + (byKey.get(`${cell.bucket}|${cell.endpoint}`) ?? 0))
+    }
+    columns.push({ label: clock(group[0]), byEndpoint })
+  }
+  return columns
+}
+
+/** Props for {@link HeatmapChart}. */
+export interface HeatmapChartProps {
+  cells: HeatmapCell[]
+  tokens: ChartTokens
+}
+
+/**
+ * Request-volume heatmap: endpoints down the side, time across the top.
+ *
+ * Built as a plain HTML table rather than a canvas/SVG grid — it is also the
+ * form's own accessible table view, every cell's exact count is in its
+ * `title`, and no extra dependency is needed for what is fundamentally a
+ * colored grid. Intensity is one hue (the chart's primary series colour) at
+ * increasing opacity — a single-hue sequential ramp, never a second hue — on
+ * a square-root scale so a handful of very busy cells don't wash out everyone
+ * else at the low end.
+ */
+export function HeatmapChart({ cells, tokens }: HeatmapChartProps) {
+  if (!cells.length) return <Empty message="No traffic recorded in this window yet." />
+
+  const columns = binHeatmap(cells, HEATMAP_COLUMNS)
+  const endpoints = [...new Set(cells.map((cell) => cell.endpoint))].sort(
+    (a, b) => cells.filter((c) => c.endpoint === b).reduce((sum, c) => sum + c.req_count, 0) -
+      cells.filter((c) => c.endpoint === a).reduce((sum, c) => sum + c.req_count, 0),
+  )
+  const max = Math.max(1, ...columns.flatMap((column) => [...column.byEndpoint.values()]))
+  const [r, g, b] = hexToRgb(tokens.series[0])
+
+  return (
+    <div className="tablewrap">
+      <table className="heatmap">
+        <thead>
+          <tr>
+            <th scope="col" />
+            {columns.map((column, index) => (
+              <th scope="col" key={column.label + index}>
+                {index % 3 === 0 ? column.label : ''}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {endpoints.map((endpoint) => (
+            <tr key={endpoint}>
+              <th scope="row">
+                <code>{endpoint}</code>
+              </th>
+              {columns.map((column, index) => {
+                const value = column.byEndpoint.get(endpoint) ?? 0
+                const intensity = Math.sqrt(value / max)
+                const alpha = value === 0 ? 0 : 0.12 + intensity * 0.8
+                return (
+                  <td key={column.label + index} title={`${endpoint} · ${column.label} · ${value} req`}>
+                    <span
+                      className="heatmap__cell"
+                      style={{ background: `rgba(${r}, ${g}, ${b}, ${alpha})` }}
+                    />
+                  </td>
+                )
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   )
 }

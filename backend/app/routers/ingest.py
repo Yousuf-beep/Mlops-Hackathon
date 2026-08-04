@@ -27,6 +27,7 @@ from sqlmodel import Session, select
 
 from app.config import settings
 from app.database import get_session
+from app.events import mark_dirty
 from app.models import ApiRegistry, LogSource, RequestLog, utcnow
 from app.schemas import ErrorResponse, IngestAccepted, IngestEvent
 
@@ -187,6 +188,7 @@ def ingest_events(events: list[IngestEvent], session: SessionDep) -> IngestAccep
     ]
     session.add_all(rows)
     session.commit()
+    mark_dirty()
     logger.debug("ingested %d event(s)", len(rows))
     return IngestAccepted(accepted=len(rows))
 
@@ -239,6 +241,7 @@ def record_call(
     )
     session.add(row)
     session.commit()
+    mark_dirty()
     return row
 
 

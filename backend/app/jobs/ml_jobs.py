@@ -29,6 +29,7 @@ from sqlmodel import Session, col, select
 
 from app.config import settings
 from app.database import engine
+from app.events import mark_dirty
 from app.ml import metrics_store
 from app.ml.anomaly import AnomalyResult, detect, explain
 from app.ml.forecasting import backtest, build_series, fit_forecast
@@ -117,6 +118,7 @@ def _persist(session: Session, api: ApiRegistry, findings: list[AnomalyResult]) 
                 explanation=explain(finding, api.name, None),
                 metric_value=finding.metric_value,
                 expected_range=f"{finding.expected_low:.1f}-{finding.expected_high:.1f}",
+                confidence=finding.confidence,
             )
         )
         raised += 1
@@ -233,6 +235,9 @@ def anomaly_job() -> None:
             raised = run_anomaly_detection(session)
         if raised:
             logger.info("anomaly job raised %d alert(s)", raised)
+        # Bump unconditionally, not just when a new alert fired: a resolved
+        # alert also changes the fleet's open-alert count and per-API status.
+        mark_dirty()
     except Exception:
         logger.exception("anomaly job failed")
 
@@ -244,5 +249,6 @@ def forecast_job() -> None:
             refreshed = run_forecasts(session)
         if refreshed:
             logger.info("forecast job refreshed %d api(s)", refreshed)
+            mark_dirty()
     except Exception:
         logger.exception("forecast job failed")

@@ -15,12 +15,13 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import Session
 
-from app.analytics import health_score
+from app import events
+from app.analytics import health_score, health_timeline, request_heatmap, traffic_series
 from app.jobs.ml_jobs import run_anomaly_detection, run_forecasts
 from app.jobs.rollup import compute_rollups, minute_bucket, percentile
-from app.ml.anomaly import detect, robust_zscore
+from app.ml.anomaly import confidence_from_score, detect, robust_zscore
 from app.ml.forecasting import backtest, build_series, fit_forecast
-from app.models import LogSource, MetricRollup, RequestLog
+from app.models import ApiRegistry, LogSource, MetricRollup, RequestLog
 from app.routers.ingest import normalise_endpoint, registry_slug
 
 
@@ -518,6 +519,219 @@ def test_models_metrics_endpoint_reports_after_a_refit(
     assert payload, "a refit should have recorded at least one model"
     assert {"seasonal_naive"} <= {entry["model_name"] for entry in payload}
     metrics_store.clear()
+
+
+# --------------------------------------------------------------------------- #
+# Anomaly confidence + API name                                                #
+# --------------------------------------------------------------------------- #
+
+
+def test_confidence_from_score_is_bounded_and_monotonic() -> None:
+    """A stronger score reads as more confident, but never reaches 1.0."""
+    weak = confidence_from_score(3.5, "robust_zscore")
+    strong = confidence_from_score(14.0, "robust_zscore")
+
+    assert 0.0 < weak < strong < 1.0
+
+
+def test_anomaly_job_persists_a_confidence(session: Session, api: dict[str, object]) -> None:
+    """Alerts raised by the anomaly job carry the detector's confidence."""
+    api_id = int(api["id"])
+    now = datetime.now(UTC)
+    calm = [
+        MetricRollup(
+            bucket=minute_bucket(now - timedelta(minutes=index)),
+            api_id=api_id,
+            endpoint="/pay",
+            req_count=10,
+            err_count=0,
+            p50_ms=100.0,
+            p95_ms=100.0,
+            p99_ms=100.0,
+            avg_ms=100.0,
+        )
+        for index in range(30, 0, -1)
+    ]
+    spike = MetricRollup(
+        bucket=minute_bucket(now),
+        api_id=api_id,
+        endpoint="/pay",
+        req_count=10,
+        err_count=0,
+        p50_ms=100.0,
+        p95_ms=2500.0,
+        p99_ms=2500.0,
+        avg_ms=2500.0,
+    )
+    session.add_all([*calm, spike])
+    session.commit()
+
+    assert run_anomaly_detection(session, window_min=120) >= 1
+
+    from app.models import Alert
+
+    fired = session.query(Alert).one()
+    assert fired.confidence is not None
+    assert 0.0 < fired.confidence < 1.0
+
+
+def test_alerts_endpoint_reports_api_name_and_confidence(
+    client: TestClient, session: Session, api: dict[str, object]
+) -> None:
+    """``GET /v1/alerts`` denormalises the API name and carries confidence."""
+    api_id = int(api["id"])
+    now = datetime.now(UTC)
+    calm = [
+        MetricRollup(
+            bucket=minute_bucket(now - timedelta(minutes=index)),
+            api_id=api_id,
+            endpoint="/pay",
+            req_count=10,
+            err_count=0,
+            p95_ms=100.0,
+        )
+        for index in range(30, 0, -1)
+    ]
+    spike = MetricRollup(
+        bucket=minute_bucket(now), api_id=api_id, endpoint="/pay", req_count=10, p95_ms=2500.0
+    )
+    session.add_all([*calm, spike])
+    session.commit()
+    run_anomaly_detection(session, window_min=120)
+
+    payload = client.get("/v1/alerts").json()
+
+    assert payload
+    assert payload[0]["api_name"] == api["name"]
+    assert payload[0]["confidence"] is not None
+
+
+# --------------------------------------------------------------------------- #
+# Incremental (``since=``) series fetches                                     #
+# --------------------------------------------------------------------------- #
+
+
+def test_traffic_series_since_returns_only_newer_buckets(
+    session: Session, api: dict[str, object]
+) -> None:
+    """``since`` narrows the series to buckets strictly after the cursor."""
+    api_id = int(api["id"])
+    _seed_requests(session, api_id, minutes=10, per_minute=3)
+    compute_rollups(session, window_min=20)
+
+    full = traffic_series(session, api_id, window_min=20)
+    assert len(full) >= 3
+
+    cursor = full[-2].bucket
+    incremental = traffic_series(session, api_id, window_min=20, since=cursor)
+
+    assert incremental == [full[-1]]
+
+
+def test_traffic_endpoint_accepts_since(
+    client: TestClient, session: Session, api: dict[str, object]
+) -> None:
+    """The HTTP layer plumbs ``since`` through to the same incremental query."""
+    api_id = int(api["id"])
+    _seed_requests(session, api_id, minutes=10, per_minute=3)
+    compute_rollups(session, window_min=20)
+
+    full = client.get(f"/v1/analytics/traffic?api_id={api_id}&window_min=20").json()
+    cursor = full["points"][-2]["bucket"]
+
+    incremental = client.get(
+        f"/v1/analytics/traffic?api_id={api_id}&window_min=20&since={cursor}"
+    ).json()
+
+    assert len(incremental["points"]) == 1
+    assert incremental["points"][0]["bucket"] == full["points"][-1]["bucket"]
+
+
+# --------------------------------------------------------------------------- #
+# Health timeline + request heatmap                                           #
+# --------------------------------------------------------------------------- #
+
+
+def test_health_timeline_scores_each_bucket(session: Session, api: dict[str, object]) -> None:
+    """The timeline applies the same ``health_score`` used for the live score."""
+    api_id = int(api["id"])
+    _seed_requests(session, api_id, minutes=10, per_minute=4)
+    compute_rollups(session, window_min=20)
+    row = session.get(ApiRegistry, api_id)
+    assert row is not None
+
+    result = health_timeline(session, row, window_min=20)
+
+    assert result.points
+    assert all(0.0 <= point.score <= 100.0 for point in result.points)
+
+
+def test_health_timeline_endpoint(
+    client: TestClient, session: Session, api: dict[str, object]
+) -> None:
+    """``GET /v1/analytics/health-timeline`` serves the same shape as the query."""
+    api_id = int(api["id"])
+    _seed_requests(session, api_id, minutes=10, per_minute=4)
+    compute_rollups(session, window_min=20)
+
+    payload = client.get(f"/v1/analytics/health-timeline?api_id={api_id}&window_min=20").json()
+
+    assert payload["api_id"] == api_id
+    assert payload["points"]
+
+
+def test_heatmap_restricts_to_busiest_endpoints(
+    client: TestClient, session: Session, api: dict[str, object]
+) -> None:
+    """The heatmap caps distinct endpoints to the busiest ones by volume."""
+    api_id = int(api["id"])
+    now = datetime.now(UTC)
+    rows = []
+    for endpoint_index in range(5):
+        endpoint = f"/e{endpoint_index}"
+        for minute in range(5):
+            rows.append(
+                MetricRollup(
+                    bucket=minute_bucket(now - timedelta(minutes=minute)),
+                    api_id=api_id,
+                    endpoint=endpoint,
+                    # Endpoint 0 is far busier, so it must survive the cap.
+                    req_count=100 if endpoint_index == 0 else 1,
+                )
+            )
+    session.add_all(rows)
+    session.commit()
+
+    result = request_heatmap(session, api_id, window_min=20, max_endpoints=1)
+
+    assert result.cells
+    assert {cell.endpoint for cell in result.cells} == {"/e0"}
+
+
+# --------------------------------------------------------------------------- #
+# Dirty-flag event bus                                                        #
+# --------------------------------------------------------------------------- #
+
+
+def test_ingest_marks_the_stream_dirty(client: TestClient, api: dict[str, object]) -> None:
+    """A new ingested event bumps the version the SSE stream watches for."""
+    before = events.version()
+
+    response = client.post(
+        "/v1/ingest",
+        json=[
+            {
+                "api_id": int(api["id"]),
+                "endpoint": "/pay",
+                "method": "POST",
+                "status_code": 200,
+                "latency_ms": 12.0,
+            }
+        ],
+    )
+
+    assert response.status_code == 202
+    assert events.version() != before
 
 
 # --------------------------------------------------------------------------- #

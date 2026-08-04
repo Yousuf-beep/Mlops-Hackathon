@@ -241,6 +241,38 @@ class EndpointBreakdownResponse(BaseModel):
     endpoints: list[EndpointBreakdownItem] = Field(default_factory=list)
 
 
+class HealthTimelinePoint(BaseModel):
+    """One minute bucket of an API's composite health score."""
+
+    bucket: datetime
+    score: float = Field(ge=0.0, le=100.0)
+    req_count: int
+
+
+class HealthTimelineResponse(BaseModel):
+    """An API's health-score timeline, for the dashboard's up/down history."""
+
+    api_id: int
+    window_min: int
+    points: list[HealthTimelinePoint] = Field(default_factory=list)
+
+
+class HeatmapCell(BaseModel):
+    """One (time bucket, endpoint) cell of the request-volume heatmap."""
+
+    bucket: datetime
+    endpoint: str
+    req_count: int
+
+
+class HeatmapResponse(BaseModel):
+    """Request-volume heatmap for one API, restricted to its busiest endpoints."""
+
+    api_id: int
+    window_min: int
+    cells: list[HeatmapCell] = Field(default_factory=list)
+
+
 # --------------------------------------------------------------------------- #
 # ML (phase 3)                                                                 #
 # --------------------------------------------------------------------------- #
@@ -270,6 +302,7 @@ class AnomalyRead(BaseModel):
 
     id: int
     api_id: int
+    api_name: str = Field(description="Denormalised at read time via a join; never stored.")
     endpoint: str | None
     type: AlertType
     severity: AlertSeverity
@@ -277,6 +310,9 @@ class AnomalyRead(BaseModel):
     explanation: str
     metric_value: float
     expected_range: str
+    confidence: float | None = Field(
+        default=None, ge=0.0, le=1.0, description="Heuristic 0-1 confidence from the detector."
+    )
     fired_at: datetime
     resolved_at: datetime | None
 

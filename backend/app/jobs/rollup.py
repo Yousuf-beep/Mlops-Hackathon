@@ -28,30 +28,15 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 
 from sqlmodel import Session, select
 
 from app.config import settings
 from app.database import engine
-from app.models import MetricRollup, RequestLog, utcnow
+from app.models import MetricRollup, RequestLog, as_utc, utcnow
 
 logger = logging.getLogger(__name__)
-
-
-def as_utc(value: datetime) -> datetime:
-    """Return ``value`` as a timezone-aware UTC datetime.
-
-    SQLite has no timestamptz, so values round-trip as naive. Treating a naive
-    value as UTC matches how it was written (:func:`app.models.utcnow`).
-
-    Args:
-        value: A timestamp read back from the database.
-
-    Returns:
-        datetime: The same instant, tagged UTC.
-    """
-    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
 
 
 def minute_bucket(value: datetime) -> datetime:

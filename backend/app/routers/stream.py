@@ -14,9 +14,13 @@ Frames
     The fleet's current standing: the header tiles, one row per API, and the
     open alerts. This is the frame the dashboard actually renders from.
 
-Both are emitted on the same ``SSE_HEARTBEAT_SECONDS`` cadence. The snapshot is
-pushed rather than polled so that a dashboard left open on a wall display stays
-current without the client having to guess a refresh interval.
+Both frame types fire together, either on the fixed ``SSE_HEARTBEAT_SECONDS``
+cadence or as soon as :mod:`app.events` reports new data — whichever comes
+first. That dirty-flag wake-up is what makes a new request, alert or forecast
+show up on the dashboard within a fraction of a second instead of waiting for
+the next scheduled tick, without the stream falling back to fixed-interval
+polling of the database on every check: only the version counter is polled;
+the (comparatively expensive) snapshot query runs only when it actually moved.
 """
 
 from __future__ import annotations
@@ -24,6 +28,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from typing import Annotated
@@ -33,10 +38,10 @@ from fastapi.responses import StreamingResponse
 from sqlmodel import Session, col, select
 
 from app import analytics as queries
+from app import events
 from app.config import settings
 from app.database import get_session
 from app.models import Alert
-from app.schemas import AnomalyRead
 
 logger = logging.getLogger(__name__)
 
@@ -81,16 +86,19 @@ def build_snapshot(session: Session, window_min: int) -> dict[str, object]:
     Returns:
         dict[str, object]: Fleet summary, per-API rows and recent alerts.
     """
-    recent_alerts = session.exec(
-        select(Alert).order_by(col(Alert.fired_at).desc()).limit(SNAPSHOT_ALERT_LIMIT)
-    ).all()
+    recent_alerts = list(
+        session.exec(
+            select(Alert).order_by(col(Alert.fired_at).desc()).limit(SNAPSHOT_ALERT_LIMIT)
+        ).all()
+    )
     return {
         "window_min": window_min,
         "generated_at": datetime.now(UTC).isoformat(),
         "summary": queries.fleet_summary(session, window_min).model_dump(),
         "apis": [item.model_dump() for item in queries.api_overview(session, window_min)],
         "alerts": [
-            AnomalyRead.model_validate(alert).model_dump(mode="json") for alert in recent_alerts
+            anomaly.model_dump(mode="json")
+            for anomaly in queries.anomaly_reads(session, recent_alerts)
         ],
     }
 
@@ -103,6 +111,14 @@ async def event_generator(
 ) -> AsyncIterator[str]:
     """Yield ``heartbeat`` + ``snapshot`` frames until the client leaves.
 
+    A tick fires as soon as :func:`app.events.version` has moved since the
+    last one (new traffic, a new alert, a fresh forecast), or after
+    ``SSE_HEARTBEAT_SECONDS`` of inactivity, whichever comes first — so an
+    idle fleet still gets a periodic snapshot (and the client its liveness
+    signal) while an active one updates in near real time. The wait between
+    those two triggers is a plain ``SSE_POLL_SECONDS`` sleep comparing an int,
+    not a database query, so a quiet connection costs almost nothing.
+
     Args:
         request: The inbound request, polled for client disconnection so an
             abandoned stream does not keep a worker slot alive forever.
@@ -114,11 +130,26 @@ async def event_generator(
         str: Formatted SSE frames, two per tick.
     """
     seq = 0
+    last_seen_version = -1  # forces the first tick to fire immediately
+    last_tick = 0.0
+
     while limit is None or seq < limit:
         if await request.is_disconnected():
             logger.debug("SSE client disconnected after %d tick(s)", seq)
             break
+
+        current_version = events.version()
+        now = time.monotonic()
+        dirty = current_version != last_seen_version
+        due = (now - last_tick) >= settings.SSE_HEARTBEAT_SECONDS
+
+        if not (dirty or due):
+            await asyncio.sleep(settings.SSE_POLL_SECONDS)
+            continue
+
         seq += 1
+        last_seen_version = current_version
+        last_tick = now
 
         yield format_sse(
             "heartbeat",
@@ -140,7 +171,7 @@ async def event_generator(
 
         if limit is not None and seq >= limit:
             break
-        await asyncio.sleep(settings.SSE_HEARTBEAT_SECONDS)
+        await asyncio.sleep(settings.SSE_POLL_SECONDS)
 
 
 @router.get(

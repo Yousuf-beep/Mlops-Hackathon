@@ -64,6 +64,7 @@ export type AlertSeverity = 'info' | 'warning' | 'critical'
 export interface Alert {
   id: number
   api_id: number
+  api_name: string
   endpoint: string | null
   type: string
   severity: AlertSeverity
@@ -71,6 +72,8 @@ export interface Alert {
   explanation: string
   metric_value: number
   expected_range: string
+  /** 0-1 heuristic confidence from the detector that fired. */
+  confidence: number | null
   fired_at: string
   resolved_at: string | null
 }
@@ -107,6 +110,34 @@ export interface EndpointBreakdownResponse {
   api_id: number
   window_min: number
   endpoints: EndpointBreakdownItem[]
+}
+
+/** One minute bucket of an API's composite health score. */
+export interface HealthTimelinePoint {
+  bucket: string
+  score: number
+  req_count: number
+}
+
+/** An API's health-score history, for the up/down timeline panel. */
+export interface HealthTimelineResponse {
+  api_id: number
+  window_min: number
+  points: HealthTimelinePoint[]
+}
+
+/** One (time bucket, endpoint) cell of the request-volume heatmap. */
+export interface HeatmapCell {
+  bucket: string
+  endpoint: string
+  req_count: number
+}
+
+/** Request-volume heatmap for one API, restricted to its busiest endpoints. */
+export interface HeatmapResponse {
+  api_id: number
+  window_min: number
+  cells: HeatmapCell[]
 }
 
 /** Offline evaluation metrics for one deployed model. */

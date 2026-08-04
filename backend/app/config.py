@@ -32,7 +32,11 @@ class Settings(BaseSettings):
         DEMO_ADMIN_EMAIL: Login created by the autoseeder.
         DEMO_ADMIN_PASSWORD: Password for that login.
         PROXY_TIMEOUT_SECONDS: Upstream timeout used by the reverse proxy.
-        ROLLUP_INTERVAL_SECONDS: Period of the rollup job.
+        ROLLUP_INTERVAL_SECONDS: Period of the rollup job. Tuned short enough
+            that live traffic (e.g. the k6 generator) reaches `metric_rollup`,
+            and therefore the dashboard, within a handful of seconds — the
+            job is cheap: it only re-aggregates `ROLLUP_LOOKBACK_MINUTES` of
+            rows and upserts.
         ROLLUP_LOOKBACK_MINUTES: Trailing window the rollup job re-aggregates
             on every run, so late-arriving rows are still picked up.
         PROBE_INTERVAL_SECONDS: Period of the active prober.
@@ -65,6 +69,10 @@ class Settings(BaseSettings):
     SCHEDULER_ENABLED: bool = True
     HEARTBEAT_INTERVAL_SECONDS: int = 60
     SSE_HEARTBEAT_SECONDS: int = 5
+    #: How often the stream checks the dirty-flag for early wake-ups. Short
+    #: enough that a new request feels instant, long enough that idle
+    #: connections cost a cheap int comparison rather than a busy loop.
+    SSE_POLL_SECONDS: float = 0.25
 
     # --- collection (phase 2) -----------------------------------------------
     DEMO_TARGET_URL: str = "http://demo-target:8001"
@@ -74,16 +82,16 @@ class Settings(BaseSettings):
 
     PROXY_TIMEOUT_SECONDS: float = 15.0
 
-    ROLLUP_INTERVAL_SECONDS: int = 30
+    ROLLUP_INTERVAL_SECONDS: int = 15
     ROLLUP_LOOKBACK_MINUTES: int = 5
 
     PROBE_INTERVAL_SECONDS: int = 15
     PROBE_TIMEOUT_SECONDS: float = 10.0
 
     # --- ml (phase 3) --------------------------------------------------------
-    ANOMALY_INTERVAL_SECONDS: int = 60
+    ANOMALY_INTERVAL_SECONDS: int = 20
     ANOMALY_WINDOW_MINUTES: int = 120
-    FORECAST_INTERVAL_SECONDS: int = 300
+    FORECAST_INTERVAL_SECONDS: int = 45
     FORECAST_HORIZON_MINUTES: int = 60
 
 
