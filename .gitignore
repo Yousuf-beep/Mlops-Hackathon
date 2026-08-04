@@ -53,3 +53,9 @@ data/
 *.swp
 .DS_Store
 Thumbs.db
+
+# --- graphify knowledge graph ----------------------------------------------
+# The graph itself is committed (it is project documentation); the extraction
+# cache and per-run cost tracker are local artefacts.
+graphify-out/cache/
+graphify-out/cost.json

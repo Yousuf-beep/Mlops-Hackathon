@@ -1,0 +1,242 @@
+{
+  "C:\\Users\\Ammaar\\Desktop\\Hackathon\\Mlops-Hackathon\\backend\\alembic\\env.py": {
+    "mtime": 1785821431.1294644,
+    "ast_hash": "9b8d43a1aa2b71f705c150c60a1f5ae7",
+    "semantic_hash": "9b8d43a1aa2b71f705c150c60a1f5ae7"
+  },
+  "C:\\Users\\Ammaar\\Desktop\\Hackathon\\Mlops-Hackathon\\backend\\alembic\\versions\\20250101_0000-0001_initial_schema.py": {
+    "mtime": 1785821476.212397,
+    "ast_hash": "71d36a2572f918997c7c0def77f52b02",
+    "semantic_hash": "71d36a2572f918997c7c0def77f52b02"
+  },
+  "C:\\Users\\Ammaar\\Desktop\\Hackathon\\Mlops-Hackathon\\backend\\app\\__init__.py": {
+    "mtime": 1785820593.1162045,
+    "ast_hash": "106e448f1ce5a130fee1515fe332d957",
+    "semantic_hash": "106e448f1ce5a130fee1515fe332d957"
+  },
+  "C:\\Users\\Ammaar\\Desktop\\Hackathon\\Mlops-Hackathon\\backend\\app\\auth\\__init__.py": {
+    "mtime": 1785820732.4216366,
+    "ast_hash": "7453803a24d72b3acf17743acb34b66b",
+    "semantic_hash": "7453803a24d72b3acf17743acb34b66b"
+  },
+  "C:\\Users\\Ammaar\\Desktop\\Hackathon\\Mlops-Hackathon\\backend\\app\\auth\\dependencies.py": {
+    "mtime": 1785820765.5530598,
+    "ast_hash": "a6d70e9cdea7412150f6b0b68eb2fb1f",
+    "semantic_hash": "a6d70e9cdea7412150f6b0b68eb2fb1f"
+  },
+  "C:\\Users\\Ammaar\\Desktop\\Hackathon\\Mlops-Hackathon\\backend\\app\\auth\\security.py": {
+    "mtime": 1785821378.7343187,
+    "ast_hash": "5414f90312b6883b065744bee78b08db",
+    "semantic_hash": "5414f90312b6883b065744bee78b08db"
+  },
+  "C:\\Users\\Ammaar\\Desktop\\Hackathon\\Mlops-Hackathon\\backend\\app\\config.py": {
+    "mtime": 1785820604.776834,
+    "ast_hash": "b09e45fc8ab9fd8025bf98162eb10081",
+    "semantic_hash": "b09e45fc8ab9fd8025bf98162eb10081"
+  },
+  "C:\\Users\\Ammaar\\Desktop\\Hackathon\\Mlops-Hackathon\\backend\\app\\database.py": {
+    "mtime": 1785821378.8566496,
+    "ast_hash": "852647bb8e9785d266ac1b9ddef646e7",
+    "semantic_hash": "852647bb8e9785d266ac1b9ddef646e7"
+  },
+  "C:\\Users\\Ammaar\\Desktop\\Hackathon\\Mlops-Hackathon\\backend\\app\\demo_target.py": {
+    "mtime": 1785821026.4794204,
+    "ast_hash": "c0dfcf4b27aee4807d5666c20b40f9a5",
+    "semantic_hash": "c0dfcf4b27aee4807d5666c20b40f9a5"
+  },
+  "C:\\Users\\Ammaar\\Desktop\\Hackathon\\Mlops-Hackathon\\backend\\app\\jobs\\__init__.py": {
+    "mtime": 1785820924.0066445,
+    "ast_hash": "ad85cbf38f45f6f12579031d814fe557",
+    "semantic_hash": "ad85cbf38f45f6f12579031d814fe557"
+  },
+  "C:\\Users\\Ammaar\\Desktop\\Hackathon\\Mlops-Hackathon\\backend\\app\\jobs\\scheduler.py": {
+    "mtime": 1785821378.7343187,
+    "ast_hash": "855babf70b20d20a18707351e60bf929",
+    "semantic_hash": "855babf70b20d20a18707351e60bf929"
+  },
+  "C:\\Users\\Ammaar\\Desktop\\Hackathon\\Mlops-Hackathon\\backend\\app\\main.py": {
+    "mtime": 1785820998.2433436,
+    "ast_hash": "b8bee3dc9513f606c4728f8dcd9a5a85",
+    "semantic_hash": "b8bee3dc9513f606c4728f8dcd9a5a85"
+  },
+  "C:\\Users\\Ammaar\\Desktop\\Hackathon\\Mlops-Hackathon\\backend\\app\\ml\\__init__.py": {
+    "mtime": 1785820947.399815,
+    "ast_hash": "5d1f55959def19cb5aeaa12e10206499",
+    "semantic_hash": "5d1f55959def19cb5aeaa12e10206499"
+  },
+  "C:\\Users\\Ammaar\\Desktop\\Hackathon\\Mlops-Hackathon\\backend\\app\\ml\\anomaly.py": {
+    "mtime": 1785820980.9263165,
+    "ast_hash": "8bff756f6fe0ada5756b56eeb0b3fa07",
+    "semantic_hash": "8bff756f6fe0ada5756b56eeb0b3fa07"
+  },
+  "C:\\Users\\Ammaar\\Desktop\\Hackathon\\Mlops-Hackathon\\backend\\app\\ml\\forecasting.py": {
+    "mtime": 1785820963.7729864,
+    "ast_hash": "851ded5c342f6a50cf1229c41ae396ec",
+    "semantic_hash": "851ded5c342f6a50cf1229c41ae396ec"
+  },
+  "C:\\Users\\Ammaar\\Desktop\\Hackathon\\Mlops-Hackathon\\backend\\app\\models.py": {
+    "mtime": 1785821691.0829077,
+    "ast_hash": "43db33129e23cb6648b5c372110ca033",
+    "semantic_hash": "43db33129e23cb6648b5c372110ca033"
+  },
+  "C:\\Users\\Ammaar\\Desktop\\Hackathon\\Mlops-Hackathon\\backend\\app\\routers\\__init__.py": {
+    "mtime": 1785820823.7176378,
+    "ast_hash": "969d516c83e8b9f9ac26dcffee1e7332",
+    "semantic_hash": "969d516c83e8b9f9ac26dcffee1e7332"
+  },
+  "C:\\Users\\Ammaar\\Desktop\\Hackathon\\Mlops-Hackathon\\backend\\app\\routers\\analytics.py": {
+    "mtime": 1785821379.011225,
+    "ast_hash": "2abf4bfed547acd6e43cf761f1773cfc",
+    "semantic_hash": "2abf4bfed547acd6e43cf761f1773cfc"
+  },
+  "C:\\Users\\Ammaar\\Desktop\\Hackathon\\Mlops-Hackathon\\backend\\app\\routers\\auth.py": {
+    "mtime": 1785820783.9837751,
+    "ast_hash": "97c89dc3996c50f9c6d7a6f71735d58d",
+    "semantic_hash": "97c89dc3996c50f9c6d7a6f71735d58d"
+  },
+  "C:\\Users\\Ammaar\\Desktop\\Hackathon\\Mlops-Hackathon\\backend\\app\\routers\\ingest.py": {
+    "mtime": 1785821322.9298098,
+    "ast_hash": "3f6bf00a12ec093eeec3fd50075e4800",
+    "semantic_hash": "3f6bf00a12ec093eeec3fd50075e4800"
+  },
+  "C:\\Users\\Ammaar\\Desktop\\Hackathon\\Mlops-Hackathon\\backend\\app\\routers\\ml.py": {
+    "mtime": 1785820867.7165897,
+    "ast_hash": "3db0c820a1ac582044579dd35b7fe3e4",
+    "semantic_hash": "3db0c820a1ac582044579dd35b7fe3e4"
+  },
+  "C:\\Users\\Ammaar\\Desktop\\Hackathon\\Mlops-Hackathon\\backend\\app\\routers\\registry.py": {
+    "mtime": 1785820809.668853,
+    "ast_hash": "46fad7449ebf44de44bb1e76369f26af",
+    "semantic_hash": "46fad7449ebf44de44bb1e76369f26af"
+  },
+  "C:\\Users\\Ammaar\\Desktop\\Hackathon\\Mlops-Hackathon\\backend\\app\\routers\\stream.py": {
+    "mtime": 1785821378.7343187,
+    "ast_hash": "db50d33fa35be3bf7f210eb9bdb83dde",
+    "semantic_hash": "db50d33fa35be3bf7f210eb9bdb83dde"
+  },
+  "C:\\Users\\Ammaar\\Desktop\\Hackathon\\Mlops-Hackathon\\backend\\app\\schemas.py": {
+    "mtime": 1785820723.5190842,
+    "ast_hash": "9a5f8fdb85ebf16e9833c0b8a248faef",
+    "semantic_hash": "9a5f8fdb85ebf16e9833c0b8a248faef"
+  },
+  "C:\\Users\\Ammaar\\Desktop\\Hackathon\\Mlops-Hackathon\\backend\\tests\\__init__.py": {
+    "mtime": 1785821077.23336,
+    "ast_hash": "aadee4618190d7a61001b7d074913880",
+    "semantic_hash": "aadee4618190d7a61001b7d074913880"
+  },
+  "C:\\Users\\Ammaar\\Desktop\\Hackathon\\Mlops-Hackathon\\backend\\tests\\conftest.py": {
+    "mtime": 1785821175.9379344,
+    "ast_hash": "fb5643a134a003d8eca9b0df97da634e",
+    "semantic_hash": "fb5643a134a003d8eca9b0df97da634e"
+  },
+  "C:\\Users\\Ammaar\\Desktop\\Hackathon\\Mlops-Hackathon\\backend\\tests\\test_auth.py": {
+    "mtime": 1785821126.6840744,
+    "ast_hash": "77fed696879ba3c54121b84a1dda3330",
+    "semantic_hash": "77fed696879ba3c54121b84a1dda3330"
+  },
+  "C:\\Users\\Ammaar\\Desktop\\Hackathon\\Mlops-Hackathon\\backend\\tests\\test_health.py": {
+    "mtime": 1785821109.0872266,
+    "ast_hash": "7203b738bcbe92a171432068e0e9953b",
+    "semantic_hash": "7203b738bcbe92a171432068e0e9953b"
+  },
+  "C:\\Users\\Ammaar\\Desktop\\Hackathon\\Mlops-Hackathon\\backend\\tests\\test_registry.py": {
+    "mtime": 1785821147.451763,
+    "ast_hash": "938c140e22c4ee6a1bd9513ab67c3c6a",
+    "semantic_hash": "938c140e22c4ee6a1bd9513ab67c3c6a"
+  },
+  "C:\\Users\\Ammaar\\Desktop\\Hackathon\\Mlops-Hackathon\\backend\\tests\\test_stubs.py": {
+    "mtime": 1785821170.8405404,
+    "ast_hash": "26c89141faf86222b1ba625cc0afba41",
+    "semantic_hash": "26c89141faf86222b1ba625cc0afba41"
+  },
+  "C:\\Users\\Ammaar\\Desktop\\Hackathon\\Mlops-Hackathon\\frontend\\.oxlintrc.json": {
+    "mtime": 1785821866.6479948,
+    "ast_hash": "029f4905006c1fffd96bc863e2d98d3e",
+    "semantic_hash": "029f4905006c1fffd96bc863e2d98d3e"
+  },
+  "C:\\Users\\Ammaar\\Desktop\\Hackathon\\Mlops-Hackathon\\frontend\\package.json": {
+    "mtime": 1785821932.8292143,
+    "ast_hash": "4ed776383b58366191e52c4f7593d9be",
+    "semantic_hash": "4ed776383b58366191e52c4f7593d9be"
+  },
+  "C:\\Users\\Ammaar\\Desktop\\Hackathon\\Mlops-Hackathon\\frontend\\src\\App.tsx": {
+    "mtime": 1785821907.8374662,
+    "ast_hash": "6946aaf1ec7d99eb728fb689f1b288d4",
+    "semantic_hash": "6946aaf1ec7d99eb728fb689f1b288d4"
+  },
+  "C:\\Users\\Ammaar\\Desktop\\Hackathon\\Mlops-Hackathon\\frontend\\src\\main.tsx": {
+    "mtime": 1785821867.8878095,
+    "ast_hash": "787e5a07efeb2bf6209d5937195f2f68",
+    "semantic_hash": "787e5a07efeb2bf6209d5937195f2f68"
+  },
+  "C:\\Users\\Ammaar\\Desktop\\Hackathon\\Mlops-Hackathon\\frontend\\tsconfig.app.json": {
+    "mtime": 1785821866.846274,
+    "ast_hash": "5f2dafd737dea8a4ddcbb10f5113ac5a",
+    "semantic_hash": "5f2dafd737dea8a4ddcbb10f5113ac5a"
+  },
+  "C:\\Users\\Ammaar\\Desktop\\Hackathon\\Mlops-Hackathon\\frontend\\tsconfig.json": {
+    "mtime": 1785821866.8626783,
+    "ast_hash": "a3d39fa780ebff65444de257f291ce6c",
+    "semantic_hash": "a3d39fa780ebff65444de257f291ce6c"
+  },
+  "C:\\Users\\Ammaar\\Desktop\\Hackathon\\Mlops-Hackathon\\frontend\\tsconfig.node.json": {
+    "mtime": 1785821866.8734639,
+    "ast_hash": "f9cb81ddcea69ffdab672fc8c48dca66",
+    "semantic_hash": "f9cb81ddcea69ffdab672fc8c48dca66"
+  },
+  "C:\\Users\\Ammaar\\Desktop\\Hackathon\\Mlops-Hackathon\\frontend\\vite.config.ts": {
+    "mtime": 1785821867.8274078,
+    "ast_hash": "88439104b3c207f17d33ef3160e3b080",
+    "semantic_hash": "88439104b3c207f17d33ef3160e3b080"
+  },
+  "C:\\Users\\Ammaar\\Desktop\\Hackathon\\Mlops-Hackathon\\scripts\\seed_nasa.py": {
+    "mtime": 1785821833.2548425,
+    "ast_hash": "400a658b41c6e0d4e48a615d9559e7b3",
+    "semantic_hash": "400a658b41c6e0d4e48a615d9559e7b3"
+  },
+  "C:\\Users\\Ammaar\\Desktop\\Hackathon\\Mlops-Hackathon\\.github\\workflows\\ci.yml": {
+    "mtime": 1785822238.5174305,
+    "ast_hash": "5363dc0a7722496ffe091b155880c59c",
+    "semantic_hash": "5363dc0a7722496ffe091b155880c59c"
+  },
+  "C:\\Users\\Ammaar\\Desktop\\Hackathon\\Mlops-Hackathon\\README.md": {
+    "mtime": 1785822109.5548906,
+    "ast_hash": "868006950ba5922ecd593896c93f72f7",
+    "semantic_hash": "868006950ba5922ecd593896c93f72f7"
+  },
+  "C:\\Users\\Ammaar\\Desktop\\Hackathon\\Mlops-Hackathon\\docker-compose.yml": {
+    "mtime": 1785821518.5057123,
+    "ast_hash": "07b02be7986b2ba8dbd81eb6163736ee",
+    "semantic_hash": "07b02be7986b2ba8dbd81eb6163736ee"
+  },
+  "C:\\Users\\Ammaar\\Desktop\\Hackathon\\Mlops-Hackathon\\docs\\architecture.md": {
+    "mtime": 1785821760.548147,
+    "ast_hash": "2c340eff4ee03b6d298a674f5eed4bf2",
+    "semantic_hash": "2c340eff4ee03b6d298a674f5eed4bf2"
+  },
+  "C:\\Users\\Ammaar\\Desktop\\Hackathon\\Mlops-Hackathon\\docs\\decisions.md": {
+    "mtime": 1785821800.9877448,
+    "ast_hash": "2700acf75b0b5723ab6908d34f50a821",
+    "semantic_hash": "2700acf75b0b5723ab6908d34f50a821"
+  },
+  "C:\\Users\\Ammaar\\Desktop\\Hackathon\\Mlops-Hackathon\\frontend\\README.md": {
+    "mtime": 1785822127.6624405,
+    "ast_hash": "568adeafa504ee022c3d59c5163f20a2",
+    "semantic_hash": "568adeafa504ee022c3d59c5163f20a2"
+  },
+  "C:\\Users\\Ammaar\\Desktop\\Hackathon\\Mlops-Hackathon\\frontend\\index.html": {
+    "mtime": 1785821932.8292143,
+    "ast_hash": "d27b6bdb80c8a8ff738f3f888d87d2e6",
+    "semantic_hash": "d27b6bdb80c8a8ff738f3f888d87d2e6"
+  },
+  "C:\\Users\\Ammaar\\Desktop\\Hackathon\\Mlops-Hackathon\\k8s\\README.md": {
+    "mtime": 1785821809.5315907,
+    "ast_hash": "b299f5e6350ef2fad81a42f9d4bca259",
+    "semantic_hash": "b299f5e6350ef2fad81a42f9d4bca259"
+  },
+  "C:\\Users\\Ammaar\\Desktop\\Hackathon\\Mlops-Hackathon\\frontend\\public\\favicon.svg": {
+    "mtime": 1785821867.2413912,
+    "ast_hash": "7e840862161341271697daa99a40d76b",
+    "semantic_hash": "7e840862161341271697daa99a40d76b"
+  }
+}
