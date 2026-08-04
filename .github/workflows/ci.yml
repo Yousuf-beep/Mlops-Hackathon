@@ -145,12 +145,28 @@ jobs:
           uv run alembic check
 
   docker:
-    name: Build and publish image
+    name: Build and publish image (${{ matrix.name }})
     runs-on: ubuntu-latest
     needs: [lint, test, migrate]
     permissions:
       contents: read
       packages: write
+    # Two images share this job via a matrix rather than two near-identical
+    # jobs: api (also runs demo-target, via a different uvicorn entrypoint —
+    # see backend/Dockerfile) and web (the dashboard on nginx). k8s/README.md
+    # used to flag that only the api image was published; this closes that.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: api
+            context: ./backend
+            dockerfile: ./backend/Dockerfile
+            suffix: ""
+          - name: web
+            context: ./frontend
+            dockerfile: ./frontend/Dockerfile
+            suffix: "-web"
     steps:
       - uses: actions/checkout@v4
 
@@ -171,7 +187,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository }}
+          images: ghcr.io/${{ github.repository }}${{ matrix.suffix }}
           tags: |
             type=sha,format=long
             type=raw,value=latest,enable={{is_default_branch}}
@@ -179,10 +195,13 @@ jobs:
       - name: Build (and push on main)
         uses: docker/build-push-action@v6
         with:
-          context: ./backend
-          file: ./backend/Dockerfile
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
           push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # Scoped per matrix leg — otherwise the api and web builds would
+          # share one cache key and each invalidate the other's layers on
+          # every run instead of actually caching anything.
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}

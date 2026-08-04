@@ -1,12 +1,14 @@
-# Kustomize rather than Helm: the only thing that genuinely varies between
-# environments is the image tag, and `images:` expresses that without a values
-# file or a template language.
+# The base layer: every workload PulseGrid needs, with no environment-specific
+# opinions baked in beyond what a sane default looks like. Never applied
+# directly — `../overlays/{production,qa,dev}` each lay their own namespace,
+# image tags and a handful of patches on top of this. See `k8s/README.md` for
+# which overlay is which and `kubectl apply -k k8s/` (the repo-root pointer)
+# for the one that runs by default.
 #
-#   kubectl apply -k k8s/
-#   kubectl kustomize k8s/ | kubectl diff -f -
-#
-# To deploy a specific build:
-#   kustomize edit set image pulsegrid-api=ghcr.io/<org>/pulsegrid-api:<sha>
+# Kustomize rather than Helm: what varies between environments (namespace,
+# image tag, a few replica counts and a hostname) is expressible as overlay
+# patches, and that's cheaper than a values file and a template language for
+# four workloads.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 

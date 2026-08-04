@@ -1,0 +1,14 @@
+# Repo-root entry point. `kubectl apply -k k8s/` (and `kubectl kustomize
+# k8s/`) resolve through here to the production overlay — production is the
+# default, the way `git checkout main` gets you the main branch without
+# having to name it. To target QA or dev explicitly:
+#
+#   kubectl apply -k k8s/overlays/qa
+#   kubectl apply -k k8s/overlays/dev
+#
+# See `k8s/README.md` for what actually differs between the three.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - overlays/production

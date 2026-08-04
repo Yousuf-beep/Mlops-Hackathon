@@ -1,0 +1,59 @@
+# QA. A separate namespace so it can run beside production and dev on the
+# same cluster without colliding, with production's own job intervals and
+# resource shape kept as-is — QA exists to catch timing- and load-sensitive
+# bugs before they reach prod, so it should behave like prod, not like a
+# scaled-down toy. What actually differs:
+#
+#   - namespace + hostname, for isolation
+#   - a lower HPA ceiling (1-3 vs. prod's 2-8): QA never needs to absorb
+#     production traffic, only to exist and be correct. The floor is 1, not
+#     2 — prod's "a scale-to-one window is a full outage" reasoning
+#     (see base/60-hpa.yaml) is a production-traffic concern that doesn't
+#     apply here.
+#   - DEMO_AUTOSEED stays on: QA needs real, varied traffic to test against,
+#     and the seeded demo APIs plus the k6 loadgen (`load/k6/traffic.js`)
+#     provide that with no manual setup.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: pulsegrid-qa
+
+resources:
+  - ../../base
+
+commonLabels:
+  app.kubernetes.io/environment: qa
+
+patches:
+  - target: { kind: ConfigMap, name: pulsegrid-config }
+    patch: |-
+      - op: replace
+        path: /data/ENV
+        value: "qa"
+
+  - target: { kind: Ingress, name: pulsegrid }
+    patch: |-
+      - op: replace
+        path: /spec/rules/0/host
+        value: qa.pulsegrid.local
+
+  - target: { kind: Deployment, name: pulsegrid-api }
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1
+
+  - target: { kind: Deployment, name: pulsegrid-web }
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1
+
+  - target: { kind: HorizontalPodAutoscaler, name: pulsegrid-api }
+    patch: |-
+      - op: replace
+        path: /spec/minReplicas
+        value: 1
+      - op: replace
+        path: /spec/maxReplicas
+        value: 3

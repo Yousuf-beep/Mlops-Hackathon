@@ -1,0 +1,33 @@
+# Production. This is what `kubectl apply -k k8s/` resolves to by default —
+# see the pointer at the repo-root `k8s/kustomization.yaml` — because the base
+# layer was already written as the production configuration (2 API/web
+# replicas, HPA, prod-sized resource requests). This overlay adds almost
+# nothing on top of it; it exists so "production" has an explicit, named
+# target next to `qa` and `dev` that `kubectl diff`, a GitOps tool, or a
+# person can point at directly, instead of the base being an implicit default
+# no overlay actually owns.
+#
+# The one real difference from the base: image tags. The base's `:dev` tags
+# are locally-built, for `docker compose`; production points at what CI
+# actually publishes. `.github/workflows/ci.yml`'s `docker` job builds both
+# images on every push to `main` (api from `backend/Dockerfile`, web from
+# `frontend/Dockerfile`) and pushes each to its own GHCR package, tagged with
+# the commit SHA and `latest`.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: pulsegrid
+
+resources:
+  - ../../base
+
+commonLabels:
+  app.kubernetes.io/environment: production
+
+images:
+  - name: pulsegrid-api
+    newName: ghcr.io/yousuf-beep/mlops-hackathon
+    newTag: latest
+  - name: pulsegrid-web
+    newName: ghcr.io/yousuf-beep/mlops-hackathon-web
+    newTag: latest

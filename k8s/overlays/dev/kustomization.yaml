@@ -1,0 +1,65 @@
+# Dev. Smallest footprint on purpose — meant for a local cluster (kind,
+# minikube, Docker Desktop's own Kubernetes) or a shared dev namespace, not
+# for anything carrying real traffic:
+#
+#   - single replica everywhere, and the HPA is removed outright rather than
+#     just narrowed — there is nothing to autoscale on a 1-replica deployment,
+#     and an HPA that can never fire is just a resource nobody reads.
+#   - lower CPU/memory requests on the API, so the whole stack fits beside
+#     whatever else is running on a laptop-sized cluster.
+#   - DEBUG logging, since a dev environment is exactly where you want the
+#     noisier log line.
+#   - DEMO_AUTOSEED stays on, same reasoning as `qa`.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: pulsegrid-dev
+
+resources:
+  - ../../base
+
+commonLabels:
+  app.kubernetes.io/environment: dev
+
+patches:
+  - target: { kind: ConfigMap, name: pulsegrid-config }
+    patch: |-
+      - op: replace
+        path: /data/ENV
+        value: "dev"
+      - op: replace
+        path: /data/LOG_LEVEL
+        value: "DEBUG"
+
+  - target: { kind: Ingress, name: pulsegrid }
+    patch: |-
+      - op: replace
+        path: /spec/rules/0/host
+        value: dev.pulsegrid.local
+
+  - target: { kind: Deployment, name: pulsegrid-api }
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/cpu
+        value: "50m"
+      - op: replace
+        path: /spec/template/spec/containers/0/resources/requests/memory
+        value: "256Mi"
+
+  - target: { kind: Deployment, name: pulsegrid-web }
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1
+
+  - target: { kind: HorizontalPodAutoscaler, name: pulsegrid-api }
+    patch: |-
+      apiVersion: autoscaling/v2
+      kind: HorizontalPodAutoscaler
+      metadata:
+        name: pulsegrid-api
+        namespace: pulsegrid
+      $patch: delete
