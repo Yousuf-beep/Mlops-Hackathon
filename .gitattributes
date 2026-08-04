@@ -2,6 +2,12 @@
 # the Linux containers, which breaks anything the shell has to interpret.
 * text=auto eol=lf
 
+# ...except Windows scripts. cmd.exe mis-parses LF-only batch files — `goto`
+# labels and multi-line blocks silently misbehave — so these must stay CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
 # Binary assets must never be touched.
 *.png binary
 *.jpg binary

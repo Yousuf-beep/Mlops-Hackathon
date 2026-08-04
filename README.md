@@ -143,13 +143,33 @@ total uptime. See [Database design](#database-design).
 **Prerequisites:** Docker Desktop (or Docker Engine + Compose v2). Nothing else
 — Python and Node are only needed if you want to run the pieces natively.
 
+**Windows** — `run.bat` checks every prerequisite, creates `.env`, builds, waits
+for all three services to report healthy, then probes the endpoints:
+
+```bat
+git clone https://github.com/Yousuf-beep/Mlops-Hackathon.git pulsegrid
+cd pulsegrid
+run.bat
+```
+
+| Command | Does |
+| --- | --- |
+| `run.bat` | Prerequisite checks → build → start → wait for healthy → verify |
+| `run.bat status` | Show what is running |
+| `run.bat logs` | Follow the API logs |
+| `run.bat test` | Run the backend suite + lint on the host (SQLite, no Docker needed) |
+| `run.bat down` | Stop the stack, keep the database |
+| `run.bat reset` | Stop the stack and delete the database volume (asks to confirm) |
+
+**macOS / Linux** — or Windows if you prefer it raw:
+
 ```bash
-git clone <your-repo-url> pulsegrid && cd pulsegrid
+git clone https://github.com/Yousuf-beep/Mlops-Hackathon.git pulsegrid && cd pulsegrid
 cp .env.example .env
 docker compose up --build
 ```
 
-That's it. Three services come up:
+Either way, three services come up:
 
 | Service | URL | Purpose |
 | --- | --- | --- |
@@ -439,6 +459,7 @@ pulsegrid/
 │   └── decisions.md          # every judgement call, with reasoning
 ├── .github/workflows/ci.yml
 ├── docker-compose.yml
+├── run.bat                   # Windows launcher: prereq checks + up/down/test
 ├── .env.example
 └── README.md
 ```
