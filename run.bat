@@ -16,6 +16,7 @@ cd /d "%~dp0"
 
 set "API_URL=http://localhost:8000"
 set "DEMO_URL=http://localhost:8001"
+set "DASHBOARD_URL=http://localhost:5173"
 set "EXITCODE=0"
 
 if /i "%~1"==""       goto :cmd_up
@@ -75,6 +76,8 @@ call :wait_healthy pulsegrid-demo-target "demo-target  synthetic upstream" 40
 if errorlevel 1 set "EXITCODE=1"
 call :wait_healthy pulsegrid-api         "api          migrations then uvicorn" 60
 if errorlevel 1 set "EXITCODE=1"
+call :wait_healthy pulsegrid-web         "web          nginx + dashboard bundle" 40
+if errorlevel 1 set "EXITCODE=1"
 
 if not "%EXITCODE%"=="0" (
     echo.
@@ -94,16 +97,18 @@ where curl >nul 2>&1
 if errorlevel 1 (
     echo   [SKIP] curl not found - open %API_URL%/health in a browser instead.
 ) else (
-    call :probe "%API_URL%/health"  "GET /health          "
-    call :probe "%API_URL%/docs"    "GET /docs            "
-    call :probe "%DEMO_URL%/fast"   "GET /fast   upstream "
+    call :probe "%API_URL%/health"       "GET /health          "
+    call :probe "%API_URL%/docs"         "GET /docs            "
+    call :probe "%DEMO_URL%/fast"        "GET /fast   upstream "
+    call :probe "%DASHBOARD_URL%/"       "GET /       dashboard"
 )
 
 echo.
 echo  ==========================================================
-echo    PulseGrid is up.
+echo    PulseGrid is up. This is the production stack.
 echo  ==========================================================
 echo.
+echo    Dashboard       %DASHBOARD_URL%
 echo    API docs        %API_URL%/docs
 echo    Health          %API_URL%/health
 echo    Live SSE feed   curl -N %API_URL%/v1/stream
@@ -113,8 +118,10 @@ echo    Follow logs     run.bat logs
 echo    Run tests       run.bat test
 echo    Stop            run.bat down
 echo.
-echo    Dashboard ^(optional, separate window^):
-echo      cd frontend ^&^& npm install ^&^& npm run dev
+echo    ^(The "web" container above IS the dashboard - built from
+echo    frontend\Dockerfile and served by nginx on port 5173. Use
+echo    "cd frontend ^&^& npm run dev" only if you want hot-reload
+echo    while editing the frontend, not to view this stack.^)
 echo.
 goto :end
 
@@ -193,6 +200,7 @@ rem --- Port availability (warning only) ------------------------------------
 call :check_port 5432 "PostgreSQL"
 call :check_port 8000 "API"
 call :check_port 8001 "demo-target"
+call :check_port 5173 "dashboard (web)"
 
 if "%PREREQ_FAIL%"=="1" exit /b 1
 exit /b 0

@@ -57,3 +57,15 @@ patches:
       - op: replace
         path: /spec/maxReplicas
         value: 3
+
+  # NodePort rather than the shared Ingress: see the dev overlay for why.
+  # A different fixed port than dev so both can run on the same cluster at
+  # the same time without colliding.
+  - target: { kind: Service, name: pulsegrid-web }
+    patch: |-
+      - op: add
+        path: /spec/type
+        value: NodePort
+      - op: add
+        path: /spec/ports/0/nodePort
+        value: 30092

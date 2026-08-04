@@ -63,3 +63,16 @@ patches:
         name: pulsegrid-api
         namespace: pulsegrid
       $patch: delete
+
+  # NodePort rather than the shared Ingress: dev has no ingress controller
+  # dependency, and Docker Desktop's Kubernetes exposes NodePorts straight on
+  # localhost, so the dashboard is reachable the moment the Deployment is
+  # ready — same as the production stack being reachable via run.bat.
+  - target: { kind: Service, name: pulsegrid-web }
+    patch: |-
+      - op: add
+        path: /spec/type
+        value: NodePort
+      - op: add
+        path: /spec/ports/0/nodePort
+        value: 30091

@@ -17,41 +17,67 @@ k8s/
     └── dev/                  # separate namespace, no HPA, 1 replica everywhere, DEBUG logs
 ```
 
-**Production is the default.** `kubectl apply -k k8s/` resolves through the
-root pointer to `overlays/production` — the same way `git checkout main` gets
-you `main` without naming it. The base manifests were already written as the
-production configuration (2 API/web replicas, HPA, prod-sized resource
-requests), so the production overlay adds almost nothing on top; it exists so
-"production" has an explicit, named target next to `qa` and `dev` rather than
-being an implicit default no overlay actually owns.
+**Production runs through `run.bat` (docker compose), not this overlay.**
+The root pointer below still resolves to `overlays/production` so the
+manifests are complete and CI/GitOps has an explicit target to diff against,
+but there is exactly one production server: `run.bat` builds and serves the
+dashboard container on `http://localhost:5173`. The `production` overlay is
+not applied to the local cluster day to day — doing so would spin up a
+second, independent copy (its own Postgres, its own data) with nothing
+tying it to `run.bat`'s data, which is more confusing than useful locally.
+
+**QA and dev are what actually run on Kubernetes locally**, each in its own
+namespace, each on its own fixed `NodePort` so both can be up at the same
+time without colliding.
 
 ## Apply
 
 ```bash
-# Production (the default)
-kubectl apply -k k8s/
-kubectl -n pulsegrid rollout status deploy/pulsegrid-api
-kubectl -n pulsegrid port-forward svc/pulsegrid-web 8080:80
-
-# QA
+# QA — dashboard at http://localhost:30092
 kubectl apply -k k8s/overlays/qa
 kubectl -n pulsegrid-qa rollout status deploy/pulsegrid-api
+kubectl -n pulsegrid-qa rollout status deploy/pulsegrid-web
 
-# Dev
+# Dev — dashboard at http://localhost:30091
 kubectl apply -k k8s/overlays/dev
 kubectl -n pulsegrid-dev rollout status deploy/pulsegrid-api
+kubectl -n pulsegrid-dev rollout status deploy/pulsegrid-web
 ```
 
-Then open <http://localhost:8080>. To see what an overlay actually changes
-before applying it: `kubectl kustomize k8s/overlays/qa | less`, or diff two
-overlays directly with `diff <(kubectl kustomize k8s/overlays/qa) <(kubectl kustomize k8s/overlays/dev)`.
+Both namespaces, Deployments, StatefulSets and Pods show up in Docker
+Desktop's own Kubernetes view (and in `kubectl get all -n <ns>`) the moment
+they're applied — no extra step needed for that part.
+
+**Reaching the NodePorts from Windows is the part that needs a nudge.**
+Docker Desktop's Kubernetes does not reliably auto-forward `NodePort`
+Services to `localhost` — tested on this machine, newly-created NodePorts
+stayed unreachable from the host even minutes after the Service existed and
+the Pod was ready, cluster restart included. `k8s.bat` (repo root)
+works around this the same way a real cluster's `LoadBalancer` would: it
+opens one `kubectl port-forward` per environment, on the exact NodePort
+number, in its own console window.
+
+```bat
+k8s.bat            :: open both tunnels (after the `kubectl apply -k` calls above)
+k8s.bat status      :: show PulseGrid pods across qa and dev
+k8s.bat down        :: close the tunnels (Deployments/Pods are untouched)
+```
+
+If a future Docker Desktop version does forward NodePorts natively, `k8s.bat`
+is still harmless to run — a second listener on an already-forwarded port
+just fails to bind and the existing one keeps serving.
+
+To see what an overlay actually changes before applying it:
+`kubectl kustomize k8s/overlays/qa | less`, or diff two overlays directly
+with `diff <(kubectl kustomize k8s/overlays/qa) <(kubectl kustomize k8s/overlays/dev)`.
 
 ## What differs between the three
 
 | | `production` | `qa` | `dev` |
 | --- | --- | --- | --- |
 | Namespace | `pulsegrid` | `pulsegrid-qa` | `pulsegrid-dev` |
-| Ingress host | `pulsegrid.local` | `qa.pulsegrid.local` | `dev.pulsegrid.local` |
+| Local access | via `run.bat` → `http://localhost:5173` (not applied to k8s locally — see above) | NodePort → `http://localhost:30092` | NodePort → `http://localhost:30091` |
+| Ingress host (if an ingress controller is installed) | `pulsegrid.local` | `qa.pulsegrid.local` | `dev.pulsegrid.local` |
 | API / web replicas | 2 | 1 | 1 |
 | HPA | 2–8, CPU 70% | 1–3, CPU 70% | none — nothing to scale on 1 replica |
 | API / web image | `ghcr.io/…/mlops-hackathon:latest` / `…-web:latest` (CI-published) | `pulsegrid-api:dev` / `pulsegrid-web:dev` (locally built) | same as `qa` |
