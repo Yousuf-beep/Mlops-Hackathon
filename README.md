@@ -543,8 +543,7 @@ pulsegrid/
 
 | Name | Role | GitHub |
 | --- | --- | --- |
-| *TBD* | Backend, database, ML | [@handle](https://github.com/) |
-| *TBD* | Frontend, infrastructure, CI/CD | [@handle](https://github.com/) |
+| Pruthvik Gowda B K | MLOps & Infrastructure | [@pruthvik150206-ops](https://github.com/pruthvik150206-ops) |
 
 ---
 
