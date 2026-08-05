@@ -2,6 +2,12 @@
 # origin. `${API_UPSTREAM}` is substituted at container start by the nginx
 # image's own envsubst entrypoint, so one image works in compose and in
 # Kubernetes without a rebuild.
+#
+# `${NGINX_LOCAL_RESOLVERS}` is filled by the same entrypoint from the
+# container's own /etc/resolv.conf, which is why the resolver below is correct
+# on Docker's embedded DNS and on a Kubernetes cluster's without either being
+# named here. It is only populated when NGINX_ENTRYPOINT_LOCAL_RESOLVERS is
+# set, which the Dockerfile does.
 server {
     listen       8080;
     server_name  _;
@@ -24,7 +30,28 @@ server {
     # One origin for the app and the API: no CORS preflight, and no absolute
     # backend URL compiled into the bundle.
     location ~ ^/(v1|proxy|health|docs|redoc|openapi\.json) {
-        proxy_pass         ${API_UPSTREAM};
+        # Resolve the upstream per request, not at config load.
+        #
+        # A literal hostname in `proxy_pass` is resolved while nginx parses its
+        # config, and nginx *refuses to start* if the name does not exist yet.
+        # That made this image unrunnable anywhere the API was not already up —
+        # `docker run` on the published image died with "host not found in
+        # upstream", and in Kubernetes a web pod that started before the api
+        # Service existed would crash-loop instead of waiting.
+        #
+        # Going through a variable defers resolution to request time: the
+        # dashboard is served either way, and an absent API becomes a 502 that
+        # the UI already handles with its "Cannot reach the PulseGrid API"
+        # banner. `valid=` also means a rescheduled api pod is picked up
+        # without restarting nginx.
+        resolver           ${NGINX_LOCAL_RESOLVERS} valid=10s;
+        set $api_upstream  "${API_UPSTREAM}";
+
+        # A variable `proxy_pass` stops appending the request URI implicitly,
+        # so it is passed explicitly. `$request_uri` is the full original path
+        # *and* query string, which is exactly what the literal form sent from
+        # a regex location — the proxied request is byte-for-byte unchanged.
+        proxy_pass         $api_upstream$request_uri;
         proxy_http_version 1.1;
         proxy_set_header   Host              $host;
         proxy_set_header   X-Real-IP         $remote_addr;

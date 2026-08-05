@@ -8,11 +8,18 @@
 # no overlay actually owns.
 #
 # The one real difference from the base: image tags. The base's `:dev` tags
-# are locally-built, for `docker compose`; production points at what CI
-# actually publishes. `.github/workflows/ci.yml`'s `docker` job builds both
-# images on every push to `main` (api from `backend/Dockerfile`, web from
-# `frontend/Dockerfile`) and pushes each to its own GHCR package, tagged with
-# the commit SHA and `latest`.
+# are locally-built, for `docker compose`; production points at published
+# images on Docker Hub.
+#
+# Why Docker Hub rather than the GHCR packages CI also pushes: a GHCR package
+# inherits its repository's visibility and starts private, so an anonymous
+# `kubectl apply` against a cluster with no pull secret gets ImagePullBackOff.
+# These Docker Hub repositories are public and verified pullable. CI still
+# publishes to GHCR on every push to `main` (see `.github/workflows/ci.yml`) —
+# that remains the SHA-tagged provenance trail; this is the deployable target.
+#
+# Pin `newTag` to a released version rather than `latest` before anything real
+# depends on this: `latest` means a redeploy silently changes what runs.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
@@ -26,8 +33,8 @@ commonLabels:
 
 images:
   - name: pulsegrid-api
-    newName: ghcr.io/yousuf-beep/mlops-hackathon
-    newTag: latest
+    newName: docker.io/ammaartech/pulsegrid-api
+    newTag: v1.0.0
   - name: pulsegrid-web
-    newName: ghcr.io/yousuf-beep/mlops-hackathon-web
-    newTag: latest
+    newName: docker.io/ammaartech/pulsegrid-web
+    newTag: v1.0.0

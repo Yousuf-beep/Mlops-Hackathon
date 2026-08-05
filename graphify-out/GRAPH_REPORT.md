@@ -1,16 +1,16 @@
 # Graph Report - Mlops-Hackathon  (2026-08-05)
 
 ## Corpus Check
-- 77 files · ~68,029 words
+- 77 files · ~68,183 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1529 nodes · 3789 edges · 75 communities (65 shown, 10 thin omitted)
+- 1529 nodes · 3789 edges · 76 communities (66 shown, 10 thin omitted)
 - Extraction: 67% EXTRACTED · 33% INFERRED · 0% AMBIGUOUS · INFERRED: 1235 edges (avg confidence: 0.53)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `882cacf5`
+- Built from commit: `c3ad5bd0`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -90,6 +90,7 @@
 - [[_COMMUNITY_Community 72|Community 72]]
 - [[_COMMUNITY_Community 73|Community 73]]
 - [[_COMMUNITY_Community 74|Community 74]]
+- [[_COMMUNITY_Community 75|Community 75]]
 
 ## God Nodes (most connected - your core abstractions)
 1. `ApiRegistry` - 108 edges
@@ -129,7 +130,7 @@
 - **Phase-1 verification chain (lint, test, migrate, publish)** — ci_lint_job, ci_test_job, ci_migrate_job, ci_docker_job, alembic_drift_guard, sqlite_test_strategy, ghcr_publish [EXTRACTED 1.00]
 - **One-command deployability (why no broker, no TSDB, no second image)** — apscheduler_over_celery, rejected_tsdb, demo_target_in_backend_image, svc_db, svc_api, svc_demo_target, migrate_before_bind [INFERRED 0.85]
 
-## Communities (75 total, 10 thin omitted)
+## Communities (76 total, 10 thin omitted)
 
 ### Community 0 - "Community 0"
 Cohesion: 0.14
@@ -157,7 +158,7 @@ Nodes (133): AnomalyResult, ApiIdParam, ApiOverviewItem, AlertSeverity, AlertTyp
 
 ### Community 6 - "Community 6"
 Cohesion: 0.27
-Nodes (6): A slug that matches no registered API is a 404, not a 501 or a 500., A slug that matches no registered API is a 404, not a 501 or a 500., The registry stays authenticated even though analytics is open., The registry stays authenticated even though analytics is open., test_proxy_returns_404_for_unmounted_slug(), test_registered_apis_are_not_exposed_without_a_token()
+Nodes (6): A slug that matches no registered API is a 404, not a 501 or a 500., A slug that matches no registered API is a 404, not a 501 or a 500., Series endpoints reject an api_id that was never registered., Series endpoints reject an api_id that was never registered., test_analytics_404s_for_unknown_api(), test_proxy_returns_404_for_unmounted_slug()
 
 ### Community 7 - "Community 7"
 Cohesion: 0.67
@@ -252,12 +253,12 @@ Cohesion: 0.50
 Nodes (4): _engine_options(), Pick engine options appropriate for the target dialect.      SQLite (used by the, object, str
 
 ### Community 38 - "Community 38"
-Cohesion: 0.10
-Nodes (33): RegisterApiForm(), RegisterApiFormProps, SignInForm(), SignInFormProps, useProof(), ApiError, createApi(), errorDetail() (+25 more)
+Cohesion: 0.12
+Nodes (29): RegisterApiForm(), RegisterApiFormProps, SignInForm(), SignInFormProps, useProof(), ApiError, createApi(), errorDetail() (+21 more)
 
 ### Community 39 - "Community 39"
-Cohesion: 0.07
-Nodes (35): Client, AuthPanel(), LoginPage(), Mode, Proof, PROOF_LABEL, ProofState, ScrambleOptions (+27 more)
+Cohesion: 0.08
+Nodes (29): Client, AuthPanel(), LoginPage(), Mode, PROOF_LABEL, ProofState, ScrambleOptions, SessionSplash() (+21 more)
 
 ### Community 40 - "Community 40"
 Cohesion: 0.14
@@ -268,8 +269,8 @@ Cohesion: 0.15
 Nodes (19): FastAPI, object, Session, str, TestClient, User, admin_user_fixture(), app_fixture() (+11 more)
 
 ### Community 42 - "Community 42"
-Cohesion: 0.11
-Nodes (20): Score every registered API's newest bucket and record the findings.      Args:, Score every registered API's newest bucket and record the findings.      Args:, run_anomaly_detection(), A minute with no rows is zero traffic, not a missing observation., A minute with no rows is zero traffic, not a missing observation., A latency cliff in the newest bucket is reported with an expected band., A latency cliff in the newest bucket is reported with an expected band., Too little history means no detection, rather than a false alarm. (+12 more)
+Cohesion: 0.12
+Nodes (18): Score every registered API's newest bucket and record the findings.      Args:, Score every registered API's newest bucket and record the findings.      Args:, run_anomaly_detection(), A minute with no rows is zero traffic, not a missing observation., A minute with no rows is zero traffic, not a missing observation., A latency cliff in the newest bucket is reported with an expected band., A latency cliff in the newest bucket is reported with an expected band., Too little history means no detection, rather than a false alarm. (+10 more)
 
 ### Community 43 - "Community 43"
 Cohesion: 0.07
@@ -317,7 +318,7 @@ Nodes (5): options, pickTarget(), TARGETS, TOTAL_WEIGHT, traffic()
 
 ### Community 54 - "Community 54"
 Cohesion: 0.08
-Nodes (56): object, Session, str, TestClient, api_fixture(), End-to-end tests for the collection → rollup → analytics → ML pipeline.  These f, Accepted events land in ``request_log`` with normalised endpoints., Accepted events land in ``request_log`` with normalised endpoints. (+48 more)
+Nodes (58): object, Session, str, TestClient, api_fixture(), End-to-end tests for the collection → rollup → analytics → ML pipeline.  These f, Accepted events land in ``request_log`` with normalised endpoints., Accepted events land in ``request_log`` with normalised endpoints. (+50 more)
 
 ### Community 55 - "Community 55"
 Cohesion: 0.17
@@ -390,6 +391,10 @@ Nodes (5): ModelMetrics, model_metrics(), Return the last recorded evaluation me
 ### Community 72 - "Community 72"
 Cohesion: 0.50
 Nodes (3): close_engine(), Close the shared client, if one was ever opened., Release the shared Engine client. Called from the app's lifespan.
+
+### Community 75 - "Community 75"
+Cohesion: 0.19
+Nodes (10): Proof, SparklineProps, streamUrl(), IncrementalSeries, LiveSnapshot, LiveState, ThemeChoice, useIncrementalSeries() (+2 more)
 
 ## Knowledge Gaps
 - **180 isolated node(s):** `bool`, `int`, `Any`, `str`, `object` (+175 more)

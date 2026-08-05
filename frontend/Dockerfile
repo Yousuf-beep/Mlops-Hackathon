@@ -31,6 +31,12 @@ COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 
 ENV API_UPSTREAM=http://api:8000
 
+# Makes the base image's entrypoint export NGINX_LOCAL_RESOLVERS from the
+# container's own /etc/resolv.conf, which nginx.conf.template needs for its
+# `resolver` directive. Without this the variable is empty and the generated
+# config is invalid, so it is not optional.
+ENV NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1
+
 EXPOSE 8080
 
 HEALTHCHECK --interval=15s --timeout=4s --start-period=5s --retries=3 \

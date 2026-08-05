@@ -80,7 +80,7 @@ with `diff <(kubectl kustomize k8s/overlays/qa) <(kubectl kustomize k8s/overlays
 | Ingress host (if an ingress controller is installed) | `pulsegrid.local` | `qa.pulsegrid.local` | `dev.pulsegrid.local` |
 | API / web replicas | 2 | 1 | 1 |
 | HPA | 2–8, CPU 70% | 1–3, CPU 70% | none — nothing to scale on 1 replica |
-| API / web image | `ghcr.io/…/mlops-hackathon:latest` / `…-web:latest` (CI-published) | `pulsegrid-api:dev` / `pulsegrid-web:dev` (locally built) | same as `qa` |
+| API / web image | `ammaartech/pulsegrid-api:v1.0.0` / `…-web:v1.0.0` (Docker Hub, public) | `pulsegrid-api:dev` / `pulsegrid-web:dev` (locally built) | same as `qa` |
 | `ENV` | `prod` | `qa` | `dev` |
 | `LOG_LEVEL` | `INFO` | `INFO` | `DEBUG` |
 | API request sizing | 100m / 512Mi | 100m / 512Mi (unchanged — QA should behave like prod) | 50m / 256Mi |
@@ -91,14 +91,26 @@ show on first boot, and the seeded demo APIs plus the k6 loadgen
 are what make that traffic real rather than static. Turn it off with a patch
 in whichever overlay first points at a real upstream.
 
-**Both images are published.** `.github/workflows/ci.yml`'s `docker` job runs
-as a two-way matrix: `api` (from `backend/Dockerfile`, also what
-`pulsegrid-demo-target` runs — one image, two entrypoints) and `web` (from
-`frontend/Dockerfile`), each to its own GHCR package
-(`ghcr.io/<repo>` and `ghcr.io/<repo>-web`), tagged with the commit SHA and
-`latest` on every push to `main`. `qa` and `dev` still run the locally-built
-`:dev` tags on purpose — they're meant to run whatever you have on disk, not
-force a registry round-trip for a throwaway environment.
+**Both images are published, to two registries, for two different jobs.**
+
+*Docker Hub* — `ammaartech/pulsegrid-api` and `ammaartech/pulsegrid-web`, both
+public and both carrying `v1.0.0` and `latest`. This is what the `production`
+overlay pulls, because a public repository needs no pull secret: a cluster with
+no credentials configured can `kubectl apply -k k8s/overlays/production` and it
+will start.
+
+*GHCR* — `.github/workflows/ci.yml`'s `docker` job runs as a two-way matrix:
+`api` (from `backend/Dockerfile`, also what `pulsegrid-demo-target` runs — one
+image, two entrypoints) and `web` (from `frontend/Dockerfile`), each to its own
+package, tagged with the commit SHA and `latest` on every push to `main`. That
+is the provenance trail — every commit on `main` has a corresponding image —
+but a GHCR package inherits its repository's visibility and starts **private**,
+so pulling one into a cluster needs an `imagePullSecret`. Deploy from Docker
+Hub; audit from GHCR.
+
+`qa` and `dev` still run the locally-built `:dev` tags on purpose — they're
+meant to run whatever you have on disk, not force a registry round-trip for a
+throwaway environment.
 
 ## What is in `base/`
 
