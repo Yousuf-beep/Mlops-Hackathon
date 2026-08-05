@@ -1,12 +1,20 @@
-/* Dashboard layout and components. Tokens come from index.css. */
+/*
+ * Dashboard layout and components. Tokens come from index.css.
+ *
+ * Sized for a room. This page is read on a projector as often as on a laptop,
+ * so the type ramp starts a step above where a dense operator tool normally
+ * would: no body copy below 0.95rem, headline numbers at 2.6rem, and axis
+ * labels large enough to survive a scaler. Density is spent on fewer, bigger
+ * things rather than more, smaller ones.
+ */
 
 .app {
-  max-width: 1440px;
+  max-width: 1760px;
   margin: 0 auto;
-  padding: 1.5rem 1.5rem 3rem;
+  padding: 1.75rem 1.75rem 3.5rem;
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
+  gap: 1.5rem;
 }
 
 /* --- top bar ------------------------------------------------------------- */
@@ -16,29 +24,30 @@
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 1rem;
+  gap: 1rem 1.5rem;
 }
 
 .brand {
   display: flex;
   align-items: baseline;
-  gap: 0.6rem;
+  gap: 0.7rem;
 }
 
 .brand h1 {
-  font-size: 1.5rem;
+  font-size: 1.85rem;
+  letter-spacing: -0.02em;
 }
 
 .brand__tag {
   color: var(--muted);
-  font-size: 0.8rem;
+  font-size: 0.92rem;
 }
 
 /* A quiet liveness cue — the product is, after all, about pulses. */
 .brand__pulse {
   align-self: center;
-  width: 0.6rem;
-  height: 0.6rem;
+  width: 0.65rem;
+  height: 0.65rem;
   border-radius: 50%;
   background: var(--good);
   box-shadow: 0 0 0 0 rgba(12, 163, 12, 0.6);
@@ -57,8 +66,22 @@
 .controls {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
+  gap: 0.75rem 1.1rem;
   flex-wrap: wrap;
+}
+
+/* A chip group and the word that says what it controls. Three unlabelled
+   groups in a row is a puzzle; the label costs one line and removes it. */
+.control {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.control__label {
+  font-size: 0.82rem;
+  color: var(--muted);
+  white-space: nowrap;
 }
 
 .segmented {
@@ -66,17 +89,18 @@
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 999px;
-  padding: 2px;
+  padding: 3px;
 }
 
 .segmented button {
   border: 0;
   background: transparent;
   color: var(--muted);
-  padding: 0.3rem 0.7rem;
+  padding: 0.35rem 0.8rem;
   border-radius: 999px;
-  font-size: 0.8rem;
+  font-size: 0.88rem;
   line-height: 1.2;
+  white-space: nowrap;
 }
 
 .segmented button:hover {
@@ -92,18 +116,18 @@
 .live {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
-  font-size: 0.78rem;
+  gap: 0.45rem;
+  font-size: 0.88rem;
   color: var(--text-2);
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 999px;
-  padding: 0.25rem 0.7rem;
+  padding: 0.3rem 0.8rem;
 }
 
 .live__dot {
-  width: 0.45rem;
-  height: 0.45rem;
+  width: 0.5rem;
+  height: 0.5rem;
   border-radius: 50%;
   background: var(--muted);
 }
@@ -126,46 +150,165 @@
   border: 1px solid color-mix(in srgb, var(--critical) 40%, var(--border));
   color: var(--text);
   border-radius: var(--radius);
-  padding: 0.75rem 1rem;
-  font-size: 0.88rem;
+  padding: 0.85rem 1.1rem;
+  font-size: 1rem;
 }
 
-/* --- stat tiles ---------------------------------------------------------- */
+/* --- the verdict --------------------------------------------------------- */
+
+/*
+ * The one thing on the page that is read first, and often the only thing read
+ * at all. It states the fleet's condition in a sentence and the next half hour
+ * beside it, so a reader who stops here has still learned the two facts the
+ * rest of the page exists to support.
+ */
+.verdict {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(18rem, 0.9fr);
+  gap: 2rem;
+  align-items: end;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 5px solid var(--muted);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 1.6rem 1.75rem;
+}
+
+.verdict--good {
+  border-left-color: var(--good);
+}
+.verdict--warning {
+  border-left-color: var(--warning);
+}
+.verdict--critical {
+  border-left-color: var(--critical);
+}
+
+.verdict__eyebrow {
+  font-family: var(--mono);
+  font-size: 0.82rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 0.85rem;
+}
+
+.verdict__headline {
+  font-size: clamp(1.7rem, 2.6vw, 2.6rem);
+  line-height: 1.18;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+/* The clause carrying the verdict is the only coloured text on the page that
+   is not a data mark; the clause after it stays neutral so "two are
+   struggling" cannot read as "everything is on fire". */
+.verdict--good .verdict__lead {
+  color: var(--good);
+}
+.verdict--warning .verdict__lead {
+  color: var(--warning);
+}
+.verdict--critical .verdict__lead {
+  color: var(--critical);
+}
+
+.verdict__rest {
+  color: var(--text-2);
+}
+
+.verdict__detail {
+  margin-top: 0.9rem;
+  max-width: 62ch;
+  font-size: 1rem;
+  line-height: 1.55;
+  color: var(--text-2);
+}
+
+.nextup {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.1rem 1.2rem;
+}
+
+.nextup__key {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.nextup__value {
+  font-size: 1.7rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  margin: 0.35rem 0 0.3rem;
+}
+
+.nextup__detail {
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
+/* --- answer tiles -------------------------------------------------------- */
 
 .tiles {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
-  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 1rem;
 }
 
 .tile {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 0.85rem 1rem;
+  padding: 1.1rem 1.2rem 1rem;
   display: flex;
   flex-direction: column;
-  gap: 0.15rem;
+  gap: 0.2rem;
   box-shadow: var(--shadow);
 }
 
+/* A question, not a noun: the label is the thing the number is answering, so
+   it gets sentence case and enough size to actually be read. */
 .tile__label {
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-  color: var(--muted);
+  font-size: 0.95rem;
+  line-height: 1.35;
+  color: var(--text-2);
+  font-weight: 500;
+  min-height: 2.7em;
 }
 
 .tile__value {
-  font-size: 1.75rem;
-  font-weight: 600;
-  line-height: 1.15;
+  font-size: 2.6rem;
+  font-weight: 650;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
 }
 
 .tile__sub {
-  font-size: 0.74rem;
+  font-size: 0.88rem;
+  line-height: 1.4;
   color: var(--muted);
-  min-height: 1em;
+  min-height: 2.4em;
+}
+
+.tile__tag {
+  align-self: flex-start;
+  margin-top: 0.55rem;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.12rem 0.4rem;
 }
 
 .tile--good .tile__value {
@@ -193,16 +336,26 @@
   }
 }
 
-/* --- grid and panels ----------------------------------------------------- */
+/* --- the bento ----------------------------------------------------------- */
 
-.grid {
+/*
+ * Twelve columns, and panels sized by how much they matter during triage
+ * rather than by how much content they happen to hold. The fleet list claims a
+ * narrow, double-height cell down the left because it is the thing you read
+ * first and keep coming back to; the two chart panels beside it get the width
+ * a time series actually needs.
+ */
+.bento {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
-  gap: 0.9rem;
-  align-items: start;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 1.1rem;
+  align-items: stretch;
 }
 
 .panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -210,37 +363,111 @@
   overflow: hidden;
 }
 
-.panel--wide {
-  grid-column: 1 / -1;
+.panel--span-4 {
+  grid-column: span 4;
+}
+.panel--span-5 {
+  grid-column: span 5;
+}
+.panel--span-6 {
+  grid-column: span 6;
+}
+.panel--span-7 {
+  grid-column: span 7;
+}
+.panel--span-8 {
+  grid-column: span 8;
+}
+.panel--span-12 {
+  grid-column: span 12;
+}
+
+.panel--tall {
+  grid-row: span 2;
 }
 
 .panel__head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 1rem;
-  padding: 0.9rem 1.1rem 0.6rem;
+  gap: 1.25rem;
+  padding: 1.15rem 1.35rem 0.5rem;
+}
+
+.panel__title {
+  min-width: 0;
 }
 
 .panel__head h2 {
-  font-size: 0.95rem;
+  font-size: 1.3rem;
+  line-height: 1.25;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
 }
 
 .panel__hint {
-  font-size: 0.76rem;
+  font-size: 0.9rem;
   color: var(--muted);
-  margin-top: 0.15rem;
+  margin-top: 0.25rem;
+}
+
+/* What the panel plots, with this window's real numbers already in it — so the
+   sentence dates itself the moment the window or the API changes. */
+.panel__lede {
+  padding: 0 1.35rem;
+  margin-bottom: 0.9rem;
+  font-size: 1rem;
+  line-height: 1.55;
+  color: var(--text-2);
+  max-width: 78ch;
 }
 
 .panel__body {
-  padding: 0 1.1rem 1.1rem;
+  padding: 0 1.35rem 1.2rem;
+  flex: 1;
+  min-height: 0;
+}
+
+/* What the panel's current shape means. Separated by a dashed rule because it
+   is a conclusion drawn from the thing above it, not more of the same thing. */
+.panel__readout {
+  margin: 0 1.35rem 1.2rem;
+  padding-top: 0.85rem;
+  border-top: 1px dashed var(--border-strong);
+  font-size: 0.95rem;
+  line-height: 1.55;
+  color: var(--text-2);
+}
+
+.panel__readoutKey {
+  display: inline-block;
+  margin-right: 0.5rem;
+  font-family: var(--mono);
+  font-size: 0.74rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted);
 }
 
 .empty {
   color: var(--muted);
-  font-size: 0.85rem;
-  padding: 2rem 0;
+  font-size: 0.98rem;
+  padding: 2.5rem 0;
   text-align: center;
+}
+
+/* The good news, said as news rather than as a missing panel. */
+.allclear {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  background: color-mix(in srgb, var(--good) 9%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--good) 32%, var(--border));
+  border-radius: 10px;
+  padding: 1rem 1.1rem;
+  font-size: 0.98rem;
+  line-height: 1.5;
+  color: var(--text-2);
 }
 
 /* --- chart chrome -------------------------------------------------------- */
@@ -249,41 +476,42 @@
   list-style: none;
   display: flex;
   flex-wrap: wrap;
-  gap: 0.9rem;
-  margin: 0 0 0.4rem;
+  gap: 0.6rem 1.4rem;
+  margin: 0 0 0.7rem;
   padding: 0;
-  font-size: 0.76rem;
+  font-size: 0.92rem;
   color: var(--text-2);
 }
 
 .legend li {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
+  gap: 0.45rem;
 }
 
 .legend__mark {
-  width: 0.85rem;
-  height: 3px;
+  width: 1.15rem;
+  height: 4px;
   border-radius: 2px;
+  flex: none;
 }
 
 .legend__mark--dashed {
   background-image: linear-gradient(90deg, currentColor 0 55%, transparent 55% 100%);
-  background-size: 6px 3px;
+  background-size: 7px 4px;
 }
 
 .tooltip {
   background: var(--surface);
   border: 1px solid var(--border-strong);
   border-radius: 8px;
-  padding: 0.5rem 0.6rem;
+  padding: 0.6rem 0.7rem;
   box-shadow: var(--shadow);
-  font-size: 0.78rem;
+  font-size: 0.92rem;
   display: flex;
   flex-direction: column;
-  gap: 0.2rem;
-  min-width: 9rem;
+  gap: 0.25rem;
+  min-width: 11rem;
 }
 
 .tooltip__time {
@@ -294,13 +522,14 @@
 .tooltip__row {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.5rem;
 }
 
 .tooltip__swatch {
-  width: 0.5rem;
-  height: 0.5rem;
+  width: 0.6rem;
+  height: 0.6rem;
   border-radius: 2px;
+  flex: none;
 }
 
 .tooltip__name {
@@ -316,25 +545,46 @@
 
 /* --- fleet list ---------------------------------------------------------- */
 
+/* Capped rather than unbounded: the fleet card claims two grid rows, and a
+   fleet of forty would otherwise stretch those rows — and the two chart panels
+   sharing them — down the page. */
 .apilist {
   list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
+  gap: 0.55rem;
+  max-height: 44rem;
+  overflow-y: auto;
 }
 
+/*
+ * A status bar down the leading edge. It is the fastest way to read the shape
+ * of a fleet from a distance, and it never carries the state alone — the badge
+ * and the sentence beside it are both saying the same thing in words.
+ */
 .apirow {
   width: 100%;
   text-align: left;
   background: var(--surface-2);
   border: 1px solid var(--border);
+  border-left: 4px solid var(--border-strong);
   border-radius: 10px;
-  padding: 0.6rem 0.75rem;
+  padding: 0.75rem 0.9rem;
   display: flex;
   flex-direction: column;
-  gap: 0.3rem;
+  gap: 0.35rem;
+}
+
+.apirow--healthy {
+  border-left-color: var(--good);
+}
+.apirow--degraded {
+  border-left-color: var(--warning);
+}
+.apirow--critical {
+  border-left-color: var(--critical);
 }
 
 .apirow:hover {
@@ -342,8 +592,8 @@
 }
 
 .apirow--on {
-  border-color: var(--accent);
   background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent);
 }
 
 .apirow__top {
@@ -354,14 +604,23 @@
 }
 
 .apirow__name {
-  font-weight: 600;
+  font-weight: 650;
+  font-size: 1.05rem;
+  letter-spacing: -0.01em;
+}
+
+/* What is wrong with this API, in a sentence, before any of its numbers. */
+.apirow__say {
+  font-size: 0.92rem;
+  line-height: 1.45;
+  color: var(--text-2);
 }
 
 .apirow__meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.8rem;
-  font-size: 0.76rem;
+  gap: 0.4rem 0.9rem;
+  font-size: 0.85rem;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
@@ -374,16 +633,18 @@
 .badge {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
-  font-size: 0.74rem;
+  gap: 0.4rem;
+  font-size: 0.86rem;
   color: var(--text-2);
   text-transform: capitalize;
+  white-space: nowrap;
 }
 
 .badge__dot {
-  width: 0.5rem;
-  height: 0.5rem;
+  width: 0.55rem;
+  height: 0.55rem;
   border-radius: 50%;
+  flex: none;
 }
 
 /* --- tables -------------------------------------------------------------- */
@@ -395,14 +656,14 @@
 .table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.82rem;
+  font-size: 0.98rem;
   font-variant-numeric: tabular-nums;
 }
 
 .table th,
 .table td {
   text-align: right;
-  padding: 0.45rem 0.6rem;
+  padding: 0.6rem 0.7rem;
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
 }
@@ -410,9 +671,9 @@
 .table thead th {
   color: var(--muted);
   font-weight: 500;
-  font-size: 0.72rem;
+  font-size: 0.84rem;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.05em;
 }
 
 .table th[scope='row'] {
@@ -427,7 +688,7 @@
 
 .cell--bad {
   color: var(--critical);
-  font-weight: 600;
+  font-weight: 650;
 }
 
 /* --- alerts -------------------------------------------------------------- */
@@ -438,52 +699,58 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-  max-height: 24rem;
+  gap: 0.65rem;
+  max-height: 30rem;
   overflow-y: auto;
 }
 
 .alert {
   border: 1px solid var(--border);
-  border-left: 3px solid var(--warning);
-  border-radius: 8px;
+  border-left: 4px solid var(--warning);
+  border-radius: 10px;
   background: var(--surface-2);
-  padding: 0.55rem 0.7rem;
+  padding: 0.8rem 0.95rem;
 }
 
 .alert--closed {
   border-left-color: var(--good);
-  opacity: 0.68;
+  opacity: 0.72;
 }
 
 .alert__head {
   display: flex;
   align-items: center;
-  gap: 0.6rem;
-  margin-bottom: 0.25rem;
+  gap: 0.7rem;
+  margin-bottom: 0.35rem;
 }
 
 .alert__api {
-  font-weight: 600;
-  font-size: 0.8rem;
+  font-weight: 650;
+  font-size: 0.95rem;
 }
 
 .alert__when {
   margin-left: auto;
   color: var(--muted);
-  font-size: 0.72rem;
+  font-size: 0.84rem;
+  white-space: nowrap;
 }
 
 .alert__why {
-  font-size: 0.82rem;
+  font-size: 0.96rem;
   color: var(--text-2);
-  line-height: 1.45;
+  line-height: 1.5;
+}
+
+.alert__state {
+  color: var(--text);
+  font-weight: 650;
 }
 
 .alert__band {
-  font-size: 0.72rem;
+  font-size: 0.84rem;
   color: var(--muted);
-  margin-top: 0.2rem;
+  margin-top: 0.3rem;
   font-variant-numeric: tabular-nums;
 }
 
@@ -492,13 +759,13 @@
 .sla {
   display: flex;
   flex-direction: column;
-  gap: 0.25rem;
-  min-width: 6.5rem;
+  gap: 0.3rem;
+  min-width: 9rem;
 }
 
 .sla__track {
   position: relative;
-  height: 6px;
+  height: 8px;
   border-radius: 999px;
   background: var(--surface-2);
   border: 1px solid var(--border);
@@ -523,17 +790,18 @@
 
 .sla__target {
   position: absolute;
-  top: -2px;
-  bottom: -2px;
+  top: -3px;
+  bottom: -3px;
   width: 2px;
   background: var(--text);
   opacity: 0.45;
 }
 
 .sla__label {
-  font-size: 0.72rem;
+  font-size: 0.86rem;
   font-variant-numeric: tabular-nums;
   color: var(--text-2);
+  white-space: nowrap;
 }
 
 .sla__vs {
@@ -548,16 +816,16 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.55rem;
+  gap: 0.8rem;
 }
 
 .ranklist__row {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 0.6rem;
-  font-size: 0.8rem;
-  margin-bottom: 0.2rem;
+  gap: 0.7rem;
+  font-size: 0.95rem;
+  margin-bottom: 0.3rem;
 }
 
 .ranklist__row code {
@@ -571,11 +839,11 @@
   flex: none;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
-  font-size: 0.76rem;
+  font-size: 0.88rem;
 }
 
 .ranklist__track {
-  height: 6px;
+  height: 9px;
   border-radius: 999px;
   background: var(--surface-2);
   border: 1px solid var(--border);
@@ -605,7 +873,7 @@
 .heatmap {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.72rem;
+  font-size: 0.82rem;
 }
 
 .heatmap th,
@@ -618,12 +886,13 @@
 .heatmap thead th {
   color: var(--muted);
   font-weight: 500;
-  font-size: 0.68rem;
+  font-size: 0.78rem;
+  padding-bottom: 0.35rem;
 }
 
 .heatmap tbody th {
   text-align: left;
-  padding-right: 0.5rem;
+  padding-right: 0.7rem;
   font-weight: 500;
   color: var(--text-2);
 }
@@ -631,9 +900,337 @@
 .heatmap__cell {
   display: block;
   width: 100%;
-  min-width: 0.85rem;
-  height: 1rem;
+  min-width: 1.1rem;
+  height: 1.5rem;
   border-radius: 3px;
+  border: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+}
+
+/* A colour ramp nobody can decode is decoration. This says what dark means. */
+.heatscale {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.9rem;
+  font-size: 0.84rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.heatscale__step {
+  width: 1.9rem;
+  height: 0.75rem;
+  border-radius: 3px;
+  border: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+}
+
+/* --- infrastructure: containers ------------------------------------------ */
+
+/*
+ * The containers table carries prose, not just figures, so it drops the
+ * right-alignment and tabular figures the metric tables use. Cells align to the
+ * top because a row's height is set by whichever cell has the most in it —
+ * usually the endpoint list — and a centred service name beside a stack of
+ * three links reads as a mistake.
+ */
+/* Below this the columns would start compressing image names and URLs into
+   mid-word breaks. `.tablewrap` scrolls instead, which keeps every cell
+   readable on a narrow screen rather than merely present. */
+.table--infra {
+  min-width: 58rem;
+}
+
+.table--infra th,
+.table--infra td {
+  text-align: left;
+  vertical-align: top;
+  white-space: normal;
+  padding: 0.75rem 0.9rem 0.75rem 0;
+}
+
+.table--infra th:last-child,
+.table--infra td:last-child {
+  padding-right: 0;
+}
+
+/* Stopped containers stay legible — they are still information — but recede
+   behind the ones that are up. */
+.table--infra .row--off th,
+.table--infra .row--off td {
+  opacity: 0.62;
+}
+
+.infra__service {
+  display: block;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.infra__sub {
+  display: block;
+  margin-top: 0.15rem;
+  font-family: var(--mono);
+  font-size: 0.76rem;
+  color: var(--muted);
+  word-break: break-all;
+}
+
+.infra__none {
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.chip {
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  line-height: 1.6;
+  color: var(--text-2);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.05rem 0.4rem;
+  white-space: nowrap;
+}
+
+/* An exposed-but-unpublished port is a real port with no host address, and the
+   quieter chip says so without a second label. */
+.chip--muted {
+  color: var(--muted);
+  border-style: dashed;
+}
+
+.endpoints {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  align-items: flex-start;
+}
+
+.endpoint {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+}
+
+.endpoint code {
+  font-size: 0.84rem;
+  word-break: break-all;
+}
+
+a.endpoint code {
+  color: var(--accent);
+}
+
+a.endpoint:hover {
+  border-bottom-color: var(--accent);
+}
+
+.endpoint__go {
+  font-size: 0.75rem;
+  color: var(--accent);
+}
+
+/* Not every address is a link. A database URL is shown so it can be copied,
+   which is what it is actually for. */
+.endpoint--plain code {
+  color: var(--text-2);
+}
+
+/* --- infrastructure: web endpoints by environment ------------------------- */
+
+.envs {
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+}
+
+/* Same visual language as the header's segmented controls, with a count: the
+   number is what makes an empty environment readable before it is opened. */
+.envtabs {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  align-self: flex-start;
+}
+
+.envtab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+  border-radius: 999px;
+  padding: 0.4rem 0.95rem;
+  font-size: 0.92rem;
+  font-weight: 500;
+}
+
+.envtab:hover {
+  color: var(--text);
+}
+
+.envtab--on {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow);
+}
+
+.envtab__count {
+  font-family: var(--mono);
+  font-size: 0.74rem;
+  line-height: 1.5;
+  min-width: 1.5rem;
+  text-align: center;
+  border-radius: 999px;
+  padding: 0.05rem 0.35rem;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.envtab__count--zero {
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  color: var(--muted);
+}
+
+/*
+ * Flex rather than grid: a fixed track count leaves a dead column whenever the
+ * number of services does not divide into it, and `auto-fit` swings the other
+ * way and stretches a lone endpoint across the whole panel. Cards that grow to
+ * fill the row but stop at a readable width do neither.
+ */
+.weburls {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.9rem;
+}
+
+.weburl {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  flex: 1 1 19rem;
+  max-width: 32rem;
+  min-width: 0;
+  padding: 1rem 1.1rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--good);
+  border-radius: 10px;
+}
+
+.weburl--off {
+  border-left-color: var(--border-strong);
+}
+
+.weburl__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.weburl__service {
+  font-weight: 600;
+  font-size: 1.02rem;
+  color: var(--text);
+}
+
+/* The address is the point of the card, so it is the largest thing on it. */
+.weburl__link {
+  font-family: var(--mono);
+  font-size: 0.95rem;
+  line-height: 1.4;
+  word-break: break-all;
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  align-self: flex-start;
+}
+
+.weburl__link:hover {
+  border-bottom-color: var(--accent);
+}
+
+.weburl__link--dead {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.weburl__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.weburl__meta code {
+  font-size: 0.78rem;
+}
+
+/* The probe result, when there is one. Absent means "not determined", which is
+   deliberately silent rather than shown as a third state nobody can act on. */
+.weburl__ok {
+  color: var(--good);
+}
+
+.weburl__bad {
+  color: var(--critical);
+}
+
+/* `margin-top: auto` pins the button to the bottom of every card, so a row of
+   cards whose metadata wraps to different heights still lines its actions up. */
+.weburl__open {
+  align-self: flex-start;
+  margin-top: auto;
+  text-decoration: none;
+  display: inline-block;
+}
+
+.weburl__open[aria-disabled='true'] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.envempty {
+  padding: 2.25rem 0;
+  text-align: center;
+}
+
+.envempty__head {
+  color: var(--text-2);
+  font-size: 1rem;
+}
+
+.envempty__hint {
+  margin-top: 0.4rem;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.envempty__hint code {
+  color: var(--text-2);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 0.05rem 0.35rem;
 }
 
 /* --- auth bar -------------------------------------------------------------*/
@@ -647,23 +1244,23 @@
 .authbar__user {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
-  font-size: 0.8rem;
+  gap: 0.45rem;
+  font-size: 0.88rem;
   color: var(--text-2);
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 999px;
-  padding: 0.3rem 0.7rem 0.3rem 0.85rem;
+  padding: 0.32rem 0.75rem 0.32rem 0.9rem;
 }
 
 .authbar__role {
   text-transform: uppercase;
-  font-size: 0.65rem;
+  font-size: 0.7rem;
   letter-spacing: 0.06em;
   color: var(--muted);
   background: var(--surface-2);
   border-radius: 999px;
-  padding: 0.1rem 0.4rem;
+  padding: 0.12rem 0.45rem;
 }
 
 .btn {
@@ -671,9 +1268,10 @@
   background: var(--surface);
   color: var(--text);
   border-radius: 999px;
-  padding: 0.35rem 0.85rem;
-  font-size: 0.82rem;
+  padding: 0.4rem 0.95rem;
+  font-size: 0.9rem;
   font-weight: 500;
+  white-space: nowrap;
 }
 
 .btn:hover {
@@ -715,7 +1313,7 @@
   border-radius: var(--radius);
   box-shadow: var(--shadow);
   width: 100%;
-  max-width: 26rem;
+  max-width: 28rem;
   max-height: 90vh;
   overflow-y: auto;
 }
@@ -724,21 +1322,21 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 1rem 1.1rem 0.8rem;
+  padding: 1.1rem 1.2rem 0.9rem;
   border-bottom: 1px solid var(--border);
 }
 
 .modal__head h2 {
-  font-size: 1rem;
+  font-size: 1.15rem;
 }
 
 .modal__close {
   border: 0;
   background: transparent;
   color: var(--muted);
-  font-size: 1rem;
+  font-size: 1.05rem;
   line-height: 1;
-  padding: 0.2rem;
+  padding: 0.25rem;
   border-radius: 6px;
 }
 
@@ -748,7 +1346,7 @@
 }
 
 .modal__body {
-  padding: 1.1rem;
+  padding: 1.2rem;
 }
 
 /* --- forms ------------------------------------------------------------- */
@@ -756,23 +1354,23 @@
 .form {
   display: flex;
   flex-direction: column;
-  gap: 0.85rem;
+  gap: 0.9rem;
 }
 
 .form__row {
   display: flex;
   flex-direction: column;
-  gap: 0.3rem;
+  gap: 0.35rem;
 }
 
 .form__grid2 {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 0.85rem;
+  gap: 0.9rem;
 }
 
 .form__label {
-  font-size: 0.78rem;
+  font-size: 0.88rem;
   color: var(--text-2);
   font-weight: 500;
 }
@@ -782,8 +1380,8 @@
   background: var(--surface-2);
   color: var(--text);
   border-radius: 8px;
-  padding: 0.5rem 0.65rem;
-  font-size: 0.88rem;
+  padding: 0.55rem 0.7rem;
+  font-size: 0.98rem;
   font-family: inherit;
 }
 
@@ -793,7 +1391,7 @@
 }
 
 .form__note {
-  font-size: 0.72rem;
+  font-size: 0.82rem;
   color: var(--muted);
 }
 
@@ -803,12 +1401,12 @@
 
 .form__error {
   margin: 0;
-  font-size: 0.82rem;
+  font-size: 0.92rem;
   color: var(--critical);
   background: color-mix(in srgb, var(--critical) 10%, var(--surface));
   border: 1px solid color-mix(in srgb, var(--critical) 35%, var(--border));
   border-radius: 8px;
-  padding: 0.5rem 0.7rem;
+  padding: 0.55rem 0.75rem;
 }
 
 .form__actions {
@@ -822,8 +1420,8 @@
   background: var(--accent);
   color: white;
   border-radius: 999px;
-  padding: 0.5rem 1.1rem;
-  font-size: 0.85rem;
+  padding: 0.55rem 1.2rem;
+  font-size: 0.95rem;
   font-weight: 600;
 }
 
@@ -833,7 +1431,7 @@
 
 .form__hint {
   margin: 0;
-  font-size: 0.76rem;
+  font-size: 0.86rem;
   color: var(--muted);
   text-align: center;
 }
@@ -853,12 +1451,64 @@
 .foot {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.75rem;
+  gap: 0.9rem;
   justify-content: space-between;
   color: var(--muted);
-  font-size: 0.76rem;
+  font-size: 0.88rem;
   border-top: 1px solid var(--border);
-  padding-top: 0.9rem;
+  padding-top: 1.1rem;
+}
+
+/* --- responsive ---------------------------------------------------------- */
+
+/*
+ * One fold, not a cascade of them. Between these widths the bento collapses
+ * from twelve columns to two halves; below the second it becomes a single
+ * column and every panel keeps its full width, because a chart squeezed into a
+ * third of a narrow screen is not a smaller chart, it is an unreadable one.
+ */
+@media (max-width: 1400px) {
+  .panel--span-4,
+  .panel--span-5 {
+    grid-column: span 6;
+  }
+
+  .panel--span-7,
+  .panel--span-8 {
+    grid-column: span 12;
+  }
+
+  /* Nothing beside the fleet list is two rows tall any more. */
+  .panel--tall {
+    grid-row: auto;
+  }
+}
+
+@media (max-width: 1080px) {
+  .verdict {
+    grid-template-columns: 1fr;
+    align-items: start;
+    gap: 1.5rem;
+  }
+}
+
+@media (max-width: 860px) {
+  .app {
+    padding: 1.1rem 1rem 2.5rem;
+  }
+
+  .bento {
+    grid-template-columns: 1fr;
+  }
+
+  .panel[class*='panel--span-'] {
+    grid-column: 1 / -1;
+  }
+
+  .tile__label,
+  .tile__sub {
+    min-height: 0;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -870,15 +1520,5 @@
   .sla__fill,
   .ranklist__fill {
     transition: none;
-  }
-}
-
-@media (max-width: 720px) {
-  .app {
-    padding: 1rem 0.85rem 2rem;
-  }
-
-  .grid {
-    grid-template-columns: 1fr;
   }
 }

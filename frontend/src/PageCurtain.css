@@ -1,0 +1,45 @@
+/*
+ * The page curtain sheet.
+ *
+ * Oversized in both axes: the skew pushes the top and bottom edges sideways by
+ * `tan(9°) × height`, so a sheet exactly the size of the viewport would leave a
+ * wedge of the page showing at the moment it is supposed to be fully covered.
+ */
+
+.pageCurtain {
+  position: fixed;
+  top: -10vh;
+  left: -20vw;
+  width: 140vw;
+  height: 120vh;
+  z-index: 300;
+  background: var(--plane);
+  /* Never intercepts input: a sheet that outlived its animation would
+     otherwise lock the whole app behind an invisible overlay. */
+  pointer-events: none;
+  will-change: transform;
+}
+
+/*
+ * Accent hairlines on both vertical edges. Whichever way the sheet is
+ * travelling, the edge doing the work — covering on the way in, revealing on
+ * the way out — is drawn, which is what makes the wipe legible against a page
+ * that shares the sheet's own background colour.
+ */
+.pageCurtain::before,
+.pageCurtain::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--accent);
+}
+
+.pageCurtain::before {
+  left: 0;
+}
+
+.pageCurtain::after {
+  right: 0;
+}

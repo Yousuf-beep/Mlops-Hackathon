@@ -73,3 +73,25 @@ export const SEVERITY_COLOR: Record<string, string> = {
   warning: '#fab219',
   critical: '#d03b3b',
 }
+
+/**
+ * Colour for a container's runtime state.
+ *
+ * The same four hues as {@link STATUS_COLOR}, so a green dot means the same
+ * thing in the fleet list and in the containers panel. Every use pairs the dot
+ * with its written label — a stopped container and an unhealthy one are both
+ * "not green", and the difference between them is the whole point.
+ */
+export const RUNTIME_COLOR: Record<string, string> = {
+  healthy: '#0ca30c',
+  running: '#0ca30c',
+  starting: '#fab219',
+  restarting: '#fab219',
+  paused: '#fab219',
+  unhealthy: '#d03b3b',
+  dead: '#d03b3b',
+  exited: '#898781',
+  created: '#898781',
+  removing: '#898781',
+  none: '#898781',
+}

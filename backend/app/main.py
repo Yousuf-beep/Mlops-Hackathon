@@ -20,8 +20,9 @@ from app import __version__
 from app.bootstrap import bootstrap
 from app.config import settings
 from app.database import check_connection, engine, get_session
+from app.infra import close_engine
 from app.jobs.scheduler import shutdown_scheduler, start_scheduler
-from app.routers import analytics, auth, ingest, ml, registry, stream
+from app.routers import analytics, auth, infra, ingest, ml, registry, stream
 from app.schemas import HealthResponse
 
 logging.basicConfig(
@@ -48,7 +49,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     Provisions demo data (when enabled), starts APScheduler on the way up and
     stops it cleanly on the way down so a container restart never leaves a job
-    mid-flight.
+    mid-flight. The Docker socket held open by container discovery is released
+    on the same path, for the same reason.
 
     Args:
         app: The application being started.
@@ -64,6 +66,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         yield
     finally:
         shutdown_scheduler()
+        await close_engine()
         logger.info("PulseGrid stopped")
 
 
@@ -125,6 +128,7 @@ def create_app() -> FastAPI:
     app.include_router(analytics.router)
     app.include_router(ml.router)
     app.include_router(stream.router)
+    app.include_router(infra.router)
 
     return app
 

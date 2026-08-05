@@ -1,9 +1,22 @@
 /**
  * The PulseGrid live dashboard.
  *
- * One screen answers three questions, in order: is the fleet healthy (tiles +
- * API list), what is the selected API doing (latency, traffic + forecast,
- * errors), and what went wrong (endpoint table + explained alerts).
+ * The page is organised as an argument, not as a grid of plots. It opens with a
+ * verdict — one sentence saying whether anything is wrong and what is about to
+ * happen — then five answers to the questions an operator actually arrives
+ * with, then the evidence behind them in a bento of panels sized by how much
+ * each one matters during triage.
+ *
+ * Two decisions carry most of the readability:
+ *
+ * * **Reading mode.** Every title, legend, axis note and table header exists in
+ *   a plain-English form and an instrument form. Plain is the default because
+ *   this screen is read by people who did not write the service; engineer mode
+ *   is one click away and never hides a number.
+ * * **Sentences beside charts.** Each panel carries a lede saying what it plots
+ *   with this window's real numbers in it, and a readout saying what its
+ *   current shape means. Both are computed in `narrate.ts` from the same series
+ *   the chart draws, so neither can drift away from what is on screen.
  *
  * Live data arrives over the `/v1/stream` SSE channel. Everything that depends
  * on the *selected* API is fetched on demand and refreshed whenever a frame
@@ -20,6 +33,7 @@ import {
   fetchForecast,
   fetchHealthTimeline,
   fetchHeatmap,
+  fetchInfra,
   fetchLatency,
   fetchModelMetrics,
   fetchTraffic,
@@ -32,6 +46,7 @@ import {
   TrafficChart,
 } from './components/Charts'
 import { RegisterApiForm, SignInForm } from './components/AuthForms'
+import { ContainerTable, WebEnvironments } from './components/Infra'
 import {
   AlertFeed,
   ApiList,
@@ -44,10 +59,28 @@ import {
 import { Empty, Modal, Panel, SlaGauge, StatTile } from './components/Primitives'
 import { compact, millis, percent } from './format'
 import {
+  alertsSub,
+  errorStory,
+  errorSub,
+  fleetDetail,
+  fleetVerdict,
+  healthStory,
+  latencyStory,
+  latencySub,
+  modelStory,
+  read,
+  requestsSub,
+  trafficOutlook,
+  trafficStory,
+  type Phrase,
+  type ReadingMode,
+} from './narrate'
+import { useAuth } from './session'
+import {
   useAsync,
-  useAuth,
   useIncrementalSeries,
   useLiveSnapshot,
+  useReadingMode,
   useTheme,
   type LiveState,
 } from './hooks'
@@ -88,17 +121,63 @@ function LiveBadge({ state }: { state: LiveState }) {
   )
 }
 
+/**
+ * A labelled group of chips.
+ *
+ * The label is not decoration: three unlabelled chip groups in a row is a
+ * puzzle, and the window a dashboard is showing is one of the things a reader
+ * most often gets wrong about it.
+ */
+function Segmented<T extends string | number>({
+  label,
+  options,
+  value,
+  onChange,
+}: {
+  label: string
+  options: readonly { label: string; value: T }[]
+  value: T
+  onChange: (next: T) => void
+}) {
+  return (
+    <div className="control">
+      <span className="control__label" id={`seg-${label}`}>
+        {label}
+      </span>
+      <div className="segmented" role="group" aria-labelledby={`seg-${label}`}>
+        {options.map((option) => (
+          <button
+            key={String(option.value)}
+            type="button"
+            className={option.value === value ? 'segmented__on' : undefined}
+            onClick={() => onChange(option.value)}
+            aria-pressed={option.value === value}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 /** The dashboard. */
 export default function App() {
   const [windowMin, setWindowMin] = useState<number>(60)
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const { choice, setChoice, dark } = useTheme()
+  const { mode, setMode } = useReadingMode()
   const { snapshot, state, error, tick } = useLiveSnapshot(windowMin)
   const auth = useAuth()
   const [openModal, setOpenModal] = useState<'signin' | 'register-api' | null>(null)
 
   const apis = useMemo(() => snapshot?.apis ?? [], [snapshot])
   const tokens = useMemo(() => chartTokens(dark), [dark])
+
+  /** Resolve a two-register phrase for the mode currently in force. */
+  const R = (value: Phrase) => read(mode, value)
+  /** Resolve a pair of literals the same way. */
+  const say = (plain: string, engineer: string) => (mode === 'plain' ? plain : engineer)
 
   // Default to the worst-scoring API — the one an operator opened the dashboard
   // to look at — and hold that choice until it disappears from the fleet.
@@ -188,6 +267,11 @@ export default function App() {
 
   const models = useAsync(async (signal) => fetchModelMetrics(signal), [tick])
 
+  // The container runtime, re-read on the same tick as everything else: a
+  // service that starts, stops or changes its ports shows up within one frame,
+  // with no separate timer and no manual refresh.
+  const infra = useAsync(async (signal) => fetchInfra(signal), [tick])
+
   const summary = snapshot?.summary
   const errorTone = !summary
     ? 'neutral'
@@ -196,6 +280,48 @@ export default function App() {
       : summary.error_rate > 0
         ? 'warning'
         : 'good'
+
+  // The narration. Every sentence below is derived from the series on screen,
+  // so switching window or API rewrites the prose along with the charts — and
+  // each one is withheld while its series is still in flight, because a
+  // sentence describing data that has not arrived is the one way this pattern
+  // can actively mislead.
+  const verdict = fleetVerdict(apis)
+  const outlook = trafficOutlook(traffic.points, forecast.data?.points ?? [], selected)
+  const latencyText =
+    selected && !latencyLoading
+      ? latencyStory(
+          latencyP50.points,
+          latencyP95.points,
+          latencyP99.points,
+          selected.slo_latency_ms,
+        )
+      : null
+  const trafficText =
+    selected && !traffic.loading ? trafficStory(traffic.points, forecast.data?.points ?? []) : null
+  const errorText =
+    selected && !errorSeries.loading ? errorStory(errorSeries.points, selected.slo_target) : null
+  const healthText =
+    selected && healthTimeline.data
+      ? healthStory(healthTimeline.data.points, selected.availability, selected.slo_target)
+      : null
+  const modelText = modelStory(models.data ?? [])
+
+  // The infrastructure panels narrate themselves from the same snapshot they
+  // render, so the sentence cannot claim a service the table below it does not
+  // show — and both go quiet rather than guess while discovery is unavailable.
+  const containers = infra.data?.containers ?? []
+  const runningCount = containers.filter((container) => container.state === 'running').length
+  const publishedCount = containers.reduce(
+    (total, container) => total + container.endpoints.length,
+    0,
+  )
+  const webGroups = infra.data?.environments ?? []
+  const webCount = webGroups.reduce((total, group) => total + group.services.length, 0)
+  const liveEnvCount = webGroups.filter((group) => group.services.length > 0).length
+
+  /** Names the API a panel is scoped to, so a reader is never guessing. */
+  const scope = (suffix: string) => (selected ? `${selected.name} · ${suffix}` : 'Select an API')
 
   return (
     <div className="app">
@@ -209,33 +335,32 @@ export default function App() {
         <div className="controls">
           <LiveBadge state={state} />
 
-          <div className="segmented" role="group" aria-label="Look-back window">
-            {WINDOWS.map((option) => (
-              <button
-                key={option.value}
-                type="button"
-                className={option.value === windowMin ? 'segmented__on' : undefined}
-                onClick={() => setWindowMin(option.value)}
-                aria-pressed={option.value === windowMin}
-              >
-                {option.label}
-              </button>
-            ))}
-          </div>
+          <Segmented label="Window" options={WINDOWS} value={windowMin} onChange={setWindowMin} />
 
-          <div className="segmented" role="group" aria-label="Colour theme">
-            {(['system', 'light', 'dark'] as const).map((option) => (
-              <button
-                key={option}
-                type="button"
-                className={option === choice ? 'segmented__on' : undefined}
-                onClick={() => setChoice(option)}
-                aria-pressed={option === choice}
-              >
-                {option === 'system' ? 'Auto' : option === 'light' ? 'Light' : 'Dark'}
-              </button>
-            ))}
-          </div>
+          <Segmented
+            label="Reading as"
+            options={
+              [
+                { label: 'Plain English', value: 'plain' },
+                { label: 'Engineer', value: 'engineer' },
+              ] as const
+            }
+            value={mode}
+            onChange={(next: ReadingMode) => setMode(next)}
+          />
+
+          <Segmented
+            label="Theme"
+            options={
+              [
+                { label: 'Auto', value: 'system' },
+                { label: 'Light', value: 'light' },
+                { label: 'Dark', value: 'dark' },
+              ] as const
+            }
+            value={choice}
+            onChange={setChoice}
+          />
 
           <div className="authbar">
             {auth.user ? (
@@ -283,40 +408,92 @@ export default function App() {
         </Modal>
       ) : null}
 
+      {/* The verdict. Everything below it is the evidence for this sentence. */}
+      <section className={`verdict verdict--${verdict.tone}`} aria-label="Fleet verdict">
+        <div className="verdict__main">
+          <p className="verdict__eyebrow">
+            Right now · {summary?.api_count ?? 0} {summary?.api_count === 1 ? 'API' : 'APIs'} · last{' '}
+            {windowMin} minutes
+          </p>
+          <h2 className="verdict__headline">
+            <span className="verdict__lead">{R(verdict.lead)}</span>{' '}
+            <span className="verdict__rest">{R(verdict.rest)}</span>
+          </h2>
+          <p className="verdict__detail">{R(fleetDetail(summary, windowMin))}</p>
+        </div>
+
+        <div className="nextup">
+          <p className="nextup__key">
+            {say('What happens next', 'Forecast')}
+            {selected ? ` · ${selected.name}` : ''}
+          </p>
+          <p className="nextup__value">{R(outlook.headline)}</p>
+          <p className="nextup__detail">{R(outlook.detail)}</p>
+        </div>
+      </section>
+
       <section className="tiles" aria-label="Fleet summary">
-        <StatTile label="APIs monitored" value={summary ? String(summary.api_count) : '—'} />
         <StatTile
-          label="Requests"
-          value={summary ? compact(summary.total_requests) : '—'}
-          sub={`last ${windowMin} min`}
+          index={0}
+          label={say('How many APIs are we watching?', 'APIs monitored')}
+          value={summary ? String(summary.api_count) : '—'}
+          sub={say('every one of them measured live', 'registered targets')}
+          tag="fleet"
         />
         <StatTile
-          label="Error rate"
+          index={1}
+          label={say('How much traffic came through?', 'Requests')}
+          value={summary ? compact(summary.total_requests) : '—'}
+          sub={R(requestsSub(summary, windowMin))}
+          tag="requests"
+        />
+        <StatTile
+          index={2}
+          label={say('How many of those failed?', 'Error rate')}
           value={summary ? percent(summary.error_rate) : '—'}
           tone={errorTone}
-          sub="5xx and transport failures"
+          sub={R(errorSub(summary))}
+          tag="5xx + transport"
         />
         <StatTile
-          label="p95 latency"
+          index={3}
+          label={say('How long does a slow request take?', 'p95 latency')}
           value={summary ? millis(summary.p95_ms) : '—'}
-          sub="request-weighted, fleet-wide"
+          sub={R(latencySub(summary, windowMin))}
+          tag="p95"
         />
         <StatTile
-          label="Open alerts"
+          index={4}
+          label={say('What still needs a human?', 'Open alerts')}
           value={summary ? String(summary.open_alerts) : '—'}
           tone={summary && summary.open_alerts > 0 ? 'warning' : 'good'}
-          sub="still firing"
+          sub={R(alertsSub(summary))}
+          tag="alerts"
         />
       </section>
 
-      <main className="grid">
-        <Panel title="Fleet" hint="Worst health score first">
-          <ApiList apis={apis} selectedId={selectedId} onSelect={setSelectedId} />
+      <main className="bento">
+        <Panel
+          index={0}
+          span={4}
+          tall
+          title={say('Which APIs are in trouble?', 'Fleet')}
+          hint={say('Worst first — the top row is the thing to fix', 'Worst health score first')}
+          lede={say(
+            'Pick one to load every chart below against it.',
+            'Selection scopes every panel below.',
+          )}
+        >
+          <ApiList apis={apis} selectedId={selectedId} onSelect={setSelectedId} mode={mode} />
         </Panel>
 
         <Panel
-          title="Latency percentiles"
-          hint={selected ? `${selected.name} · p50 / p95 / p99` : 'Select an API'}
+          index={1}
+          span={8}
+          title={say('How long are people waiting?', 'Latency percentiles')}
+          hint={scope(say('the typical wait, and the worst one', 'p50 / p95 / p99'))}
+          lede={latencyText ? R(latencyText.lede) : undefined}
+          readout={latencyText ? R(latencyText.readout) : undefined}
         >
           {selected && !latencyLoading ? (
             <LatencyChart
@@ -325,6 +502,7 @@ export default function App() {
               p99={latencyP99.points}
               sloMs={selected.slo_latency_ms}
               tokens={tokens}
+              mode={mode}
             />
           ) : (
             <Empty message={latencyLoading ? 'Loading…' : 'No API selected.'} />
@@ -332,8 +510,17 @@ export default function App() {
         </Panel>
 
         <Panel
-          title="Traffic and forecast"
-          hint={`Requests per minute, with the next ${FORECAST_HORIZON_MIN} minutes predicted`}
+          index={2}
+          span={8}
+          title={say('How busy will we be?', 'Traffic and forecast')}
+          hint={scope(
+            say(
+              `requests per minute, plus the next ${FORECAST_HORIZON_MIN}`,
+              `requests per minute · ${FORECAST_HORIZON_MIN}m horizon`,
+            ),
+          )}
+          lede={trafficText ? R(trafficText.lede) : undefined}
+          readout={trafficText ? R(trafficText.readout) : undefined}
         >
           {selected && !traffic.loading ? (
             <TrafficChart
@@ -341,6 +528,7 @@ export default function App() {
               forecast={forecast.data?.points ?? []}
               forecastFrom={forecast.data?.generated_at ?? null}
               tokens={tokens}
+              mode={mode}
             />
           ) : (
             <Empty message={traffic.loading ? 'Loading…' : 'No API selected.'} />
@@ -348,26 +536,32 @@ export default function App() {
         </Panel>
 
         <Panel
-          title="Error rate"
-          hint={selected ? `Against a ${percent((1 - selected.slo_target) * 100, 1)} budget` : ''}
+          index={3}
+          span={6}
+          title={say('How often do requests fail?', 'Error rate')}
+          hint={scope(say('against the failure allowance', 'against the error budget'))}
+          lede={errorText ? R(errorText.lede) : undefined}
+          readout={errorText ? R(errorText.readout) : undefined}
         >
           {selected && !errorSeries.loading ? (
-            <ErrorChart errors={errorSeries.points} sloTarget={selected.slo_target} tokens={tokens} />
+            <ErrorChart
+              errors={errorSeries.points}
+              sloTarget={selected.slo_target}
+              tokens={tokens}
+              mode={mode}
+            />
           ) : (
             <Empty message={errorSeries.loading ? 'Loading…' : 'No API selected.'} />
           )}
         </Panel>
 
-        <Panel title="Endpoints" hint="Slowest first" wide>
-          <EndpointTable
-            endpoints={endpoints.data?.endpoints ?? []}
-            sloMs={selected?.slo_latency_ms ?? 0}
-          />
-        </Panel>
-
         <Panel
-          title="Health timeline & SLA"
-          hint={selected ? `${selected.name} · score history and availability vs. objective` : ''}
+          index={4}
+          span={6}
+          title={say('Did we keep our promise?', 'Health timeline & SLA')}
+          hint={scope(say('health over time, and availability', 'score history vs. objective'))}
+          lede={healthText ? R(healthText.lede) : undefined}
+          readout={healthText ? R(healthText.readout) : undefined}
           actions={
             selected ? (
               <SlaGauge availability={selected.availability} sloTarget={selected.slo_target} />
@@ -375,16 +569,81 @@ export default function App() {
           }
         >
           {selected && healthTimeline.data ? (
-            <HealthTimelineChart points={healthTimeline.data.points} tokens={tokens} />
+            <HealthTimelineChart points={healthTimeline.data.points} tokens={tokens} mode={mode} />
           ) : (
             <Empty message={healthTimeline.loading ? 'Loading…' : 'No API selected.'} />
           )}
         </Panel>
 
         <Panel
-          title="Request heatmap"
-          hint={selected ? 'Busiest endpoints × time, this window' : 'Select an API'}
-          wide
+          index={5}
+          span={5}
+          title={say("What changed that shouldn't have?", 'Detected anomalies')}
+          hint={say(
+            'found automatically, explained in words',
+            'robust z-score + IsolationForest, with reasons',
+          )}
+          lede={say(
+            'Each one names the signal that moved, what it normally is, and what it is now.',
+            'Each carries its signal, expected band and detector confidence.',
+          )}
+        >
+          <AlertFeed alerts={alerts.data ?? []} mode={mode} />
+        </Panel>
+
+        <Panel
+          index={6}
+          span={7}
+          title={say('Which paths are slowest?', 'Endpoint breakdown')}
+          hint={scope('slowest first')}
+          lede={say(
+            'Every path this API serves. A red figure is one that broke its target.',
+            'Per-endpoint Golden Signals; red exceeds SLO.',
+          )}
+        >
+          <EndpointTable
+            endpoints={endpoints.data?.endpoints ?? []}
+            sloMs={selected?.slo_latency_ms ?? 0}
+            mode={mode}
+          />
+        </Panel>
+
+        <Panel
+          index={7}
+          span={4}
+          title={say('Which requests fail most?', 'Top failing endpoints')}
+          hint={say('by share of requests that errored', 'by error rate, this window')}
+        >
+          <TopFailingEndpoints endpoints={endpoints.data?.endpoints ?? []} />
+        </Panel>
+
+        <Panel
+          index={8}
+          span={4}
+          title={say('Which requests are slowest?', 'Top slow endpoints')}
+          hint={say('by how long a slow one takes', 'by p95 latency, this window')}
+        >
+          <TopSlowEndpoints endpoints={endpoints.data?.endpoints ?? []} />
+        </Panel>
+
+        <Panel
+          index={9}
+          span={4}
+          title={say('Where does the traffic go?', 'Traffic distribution')}
+          hint={say('share of all requests, busiest first', 'share of requests per endpoint')}
+        >
+          <TrafficDistribution endpoints={endpoints.data?.endpoints ?? []} />
+        </Panel>
+
+        <Panel
+          index={10}
+          span={8}
+          title={say('When was each path busy?', 'Request heatmap')}
+          hint={scope(say('endpoints down, time across', 'endpoints × time, this window'))}
+          lede={say(
+            'Darker means more requests in that minute. A dark band across one row is a path under load; a dark column is the whole API being hit at once.',
+            'Single-hue sequential ramp on a square-root scale, binned to fixed columns.',
+          )}
         >
           {selected && heatmap.data ? (
             <HeatmapChart cells={heatmap.data.cells} tokens={tokens} />
@@ -393,31 +652,65 @@ export default function App() {
           )}
         </Panel>
 
-        <Panel title="Top slow endpoints" hint="By p95 latency, this window">
-          <TopSlowEndpoints endpoints={endpoints.data?.endpoints ?? []} />
+        <Panel
+          index={11}
+          span={4}
+          title={say('Can you trust the prediction?', 'Model metrics')}
+          hint={say('checked against what really happened', 'last refit vs. seasonal-naive baseline')}
+          lede={R(modelText.lede)}
+          readout={R(modelText.readout)}
+        >
+          <ModelPanel metrics={models.data ?? []} mode={mode} />
         </Panel>
 
-        <Panel title="Top failing endpoints" hint="By error rate, this window">
-          <TopFailingEndpoints endpoints={endpoints.data?.endpoints ?? []} />
+        <Panel
+          index={12}
+          span={12}
+          title={say('What is actually running?', 'Containers')}
+          hint={
+            infra.data?.scope
+              ? say(
+                  `the ${infra.data.scope} stack, read from Docker`,
+                  `compose project ${infra.data.scope} · Docker Engine API`,
+                )
+              : say('read live from the container runtime', 'Docker Engine API')
+          }
+          lede={
+            infra.data?.available
+              ? say(
+                  `${runningCount} of ${containers.length} services are up, publishing ${publishedCount} ${publishedCount === 1 ? 'address' : 'addresses'} on this machine. Every link below is built from the container's own port mapping, so it goes where the service actually is.`,
+                  `${runningCount}/${containers.length} running · ${publishedCount} published port bindings. Ports, health and endpoints are read from the Docker Engine, not from docker-compose.yml.`,
+                )
+              : undefined
+          }
+        >
+          <ContainerTable snapshot={infra.data} mode={mode} />
         </Panel>
 
-        <Panel title="Traffic distribution" hint="Share of requests per endpoint">
-          <TrafficDistribution endpoints={endpoints.data?.endpoints ?? []} />
-        </Panel>
-
-        <Panel title="Detected anomalies" hint="Robust z-score and IsolationForest, with reasons">
-          <AlertFeed alerts={alerts.data ?? []} />
-        </Panel>
-
-        <Panel title="Model metrics" hint="Last refit, against the seasonal-naive baseline">
-          <ModelPanel metrics={models.data ?? []} />
+        <Panel
+          index={13}
+          span={12}
+          title={say('Where can I open each environment?', 'Web endpoints by environment')}
+          hint={say('development, QA and production', 'grouped by deployment environment')}
+          lede={
+            infra.data?.available
+              ? say(
+                  `${webCount} ${webCount === 1 ? 'address is' : 'addresses are'} open in a browser right now, across ${liveEnvCount} of ${webGroups.length} environments. A service is filed by the environment it declares, so moving a stack between them needs no change here.`,
+                  `${webCount} browsable endpoints across ${liveEnvCount}/${webGroups.length} environments. Classified from the container's environment label, falling back to its own ENV, then its project name.`,
+                )
+              : undefined
+          }
+        >
+          <WebEnvironments snapshot={infra.data} mode={mode} />
         </Panel>
       </main>
 
       <footer className="foot">
         <span>
-          Collected through the reverse proxy, <code>/v1/ingest</code> and an active prober.
-          Analytics read only from <code>metric_rollup</code>.
+          {say(
+            'Every number on this page was measured automatically — nothing here is typed in by hand.',
+            'Collected through the reverse proxy, /v1/ingest and an active prober. Analytics read only from metric_rollup.',
+          )}
         </span>
         <a href="/docs">API docs</a>
       </footer>

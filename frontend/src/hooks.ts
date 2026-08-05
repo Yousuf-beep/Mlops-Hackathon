@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { fetchMe, fetchOverview, login, registerUser, streamUrl } from './api'
+import type { ReadingMode } from './narrate'
 import type { Snapshot, TimeseriesPoint, UserRead } from './types'
 
 /** Connection state of the live stream, surfaced in the header badge. */
@@ -317,6 +318,32 @@ export function useTheme(): {
   return { choice, setChoice, dark: choice === 'system' ? systemDark : choice === 'dark' }
 }
 
+const READING_KEY = 'pulsegrid.reading'
+
+/**
+ * Which register the dashboard's prose is written in.
+ *
+ * Persisted for the same reason the theme is: an operator who has chosen the
+ * terse form should not have to choose it again every time they open the page,
+ * and a room being shown the plain form should not lose it on a refresh.
+ *
+ * @returns The current mode and a setter.
+ */
+export function useReadingMode(): {
+  mode: ReadingMode
+  setMode: (next: ReadingMode) => void
+} {
+  const [mode, setMode] = useState<ReadingMode>(
+    () => (localStorage.getItem(READING_KEY) as ReadingMode | null) ?? 'plain',
+  )
+
+  useEffect(() => {
+    localStorage.setItem(READING_KEY, mode)
+  }, [mode])
+
+  return { mode, setMode }
+}
+
 /** localStorage key the bearer token is persisted under between visits. */
 const TOKEN_KEY = 'pulsegrid.token'
 
@@ -339,9 +366,12 @@ export interface Auth {
  * on load so a stale or revoked token doesn't render the app as signed in
  * with nothing behind it.
  *
+ * Call this once, from `AuthProvider`; every consumer reads the result through
+ * `useAuth()` in `auth.tsx`. Two instances of this hook would be two sessions.
+ *
  * @returns The current user/token and the sign-in/up/out actions.
  */
-export function useAuth(): Auth {
+export function useAuthState(): Auth {
   const [token, setToken] = useState<string | null>(() => localStorage.getItem(TOKEN_KEY))
   const [user, setUser] = useState<UserRead | null>(null)
   const [resolving, setResolving] = useState(() => localStorage.getItem(TOKEN_KEY) !== null)

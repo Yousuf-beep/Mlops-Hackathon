@@ -181,6 +181,98 @@ export interface ApiCreatePayload {
   slo_latency_ms?: number
 }
 
+/** One port a container exposes, whether or not it is published to the host. */
+export interface ContainerPort {
+  container_port: number
+  protocol: string
+  /** Null when the port is reachable on the container network only. */
+  host_port: number | null
+  host_ip: string | null
+}
+
+/** A published port, rendered as an address a person can use. */
+export interface ServiceEndpoint {
+  url: string
+  scheme: string
+  host: string
+  host_ip: string
+  host_port: number
+  container_port: number
+  protocol: string
+  /** Landing path the container declared, or `''` for the plain root. */
+  path: string
+  /** Whether a browser can open this address at all. */
+  browsable: boolean
+  /** Bound to every interface, so the dashboard's own origin also reaches it. */
+  wildcard_bind: boolean
+  /**
+   * True when the service answered a probe, false when it actively refused,
+   * null when reachability could not be determined. The three cases are
+   * genuinely different and the UI treats them differently.
+   */
+  reachable: boolean | null
+}
+
+/** Which deployment environment a discovered service belongs to. */
+export type DeploymentEnvironment = 'development' | 'qa' | 'production'
+
+/** One discovered container. */
+export interface ContainerRead {
+  id: string
+  name: string
+  service: string
+  project: string | null
+  image: string
+  /** Docker lifecycle state: `running`, `exited`, `paused`, … */
+  state: string
+  /** `healthy`, `unhealthy`, `starting`, or `none` when no healthcheck exists. */
+  health: string
+  environment: DeploymentEnvironment
+  created_at: string
+  started_at: string | null
+  ports: ContainerPort[]
+  endpoints: ServiceEndpoint[]
+}
+
+/** A browsable endpoint, filed under the environment it belongs to. */
+export interface WebService {
+  service: string
+  container: string
+  environment: DeploymentEnvironment
+  url: string
+  scheme: string
+  host_port: number
+  container_port: number
+  wildcard_bind: boolean
+  state: string
+  health: string
+  /** One word for display, health taking precedence over lifecycle state. */
+  status: string
+  reachable: boolean | null
+}
+
+/** Every web endpoint in one environment. */
+export interface EnvironmentGroup {
+  environment: DeploymentEnvironment
+  label: string
+  services: WebService[]
+}
+
+/** A discovery pass over the container runtime, as returned by `/v1/infra`. */
+export interface InfraSnapshot {
+  generated_at: string
+  /** False when the container runtime could not be reached at all. */
+  available: boolean
+  /** Why discovery is unavailable, when it is. */
+  reason: string | null
+  /** Compose project discovery was scoped to; null means every container. */
+  scope: string | null
+  host: string
+  containers: ContainerRead[]
+  /** Always one group per environment, in pipeline order. */
+  environments: EnvironmentGroup[]
+}
+
 /** Offline evaluation metrics for one deployed model. */
 export interface ModelMetrics {
   model_name: string

@@ -15,6 +15,7 @@ import type {
   ForecastResponse,
   HealthTimelineResponse,
   HeatmapResponse,
+  InfraSnapshot,
   ModelMetrics,
   Snapshot,
   TimeseriesResponse,
@@ -216,6 +217,18 @@ export function fetchAlerts(windowMin: number, signal?: AbortSignal): Promise<Al
 /** Fetch the latest model-evaluation metrics. */
 export function fetchModelMetrics(signal?: AbortSignal): Promise<ModelMetrics[]> {
   return getJson<ModelMetrics[]>('/v1/models/metrics', signal)
+}
+
+/**
+ * Fetch the current view of the container runtime: every discovered service,
+ * the ports it publishes, and those ports grouped by environment.
+ *
+ * Always resolves when the backend is up — an unreachable Docker daemon comes
+ * back as a well-formed snapshot with `available: false` and a reason, not as
+ * an error, so the panel explains itself instead of disappearing.
+ */
+export function fetchInfra(signal?: AbortSignal): Promise<InfraSnapshot> {
+  return getJson<InfraSnapshot>('/v1/infra/snapshot', signal)
 }
 
 /**

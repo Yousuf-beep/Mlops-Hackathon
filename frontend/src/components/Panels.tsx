@@ -3,9 +3,15 @@
  */
 
 import { compact, millis, percent, since } from '../format'
+import { describeApi, read, type ReadingMode } from '../narrate'
 import { STATUS_COLOR } from '../theme'
 import type { Alert, ApiOverviewItem, EndpointBreakdownItem, ModelMetrics } from '../types'
 import { Empty, SeverityBadge, StatusBadge } from './Primitives'
+
+/** Pick a string for the reading mode in force. */
+function say(mode: ReadingMode, plain: string, engineer: string): string {
+  return mode === 'plain' ? plain : engineer
+}
 
 /** One row of a {@link RankedBarList}. */
 interface RankedRow {
@@ -107,15 +113,23 @@ export interface ApiListProps {
   apis: ApiOverviewItem[]
   selectedId: number | null
   onSelect: (apiId: number) => void
+  mode: ReadingMode
 }
 
 /**
  * The fleet, worst score first — the order an operator triages in.
  *
+ * Each row says what is wrong with its API in a sentence before it shows the
+ * numbers behind that judgement, so the first row is always both the thing to
+ * fix and the reason it needs fixing. The status colour is repeated as a bar
+ * down the leading edge, which is what makes the shape of the list readable
+ * from across a room; it never carries the state on its own, because the badge
+ * and the sentence are already saying it.
+ *
  * Doubles as the dashboard's table view: every number the charts encode with
  * colour is also readable here as text.
  */
-export function ApiList({ apis, selectedId, onSelect }: ApiListProps) {
+export function ApiList({ apis, selectedId, onSelect, mode }: ApiListProps) {
   if (!apis.length) {
     return <Empty message="No APIs registered yet. POST one to /v1/apis to start monitoring." />
   }
@@ -126,7 +140,7 @@ export function ApiList({ apis, selectedId, onSelect }: ApiListProps) {
         <li key={api.api_id}>
           <button
             type="button"
-            className={api.api_id === selectedId ? 'apirow apirow--on' : 'apirow'}
+            className={`apirow apirow--${api.status}${api.api_id === selectedId ? ' apirow--on' : ''}`}
             onClick={() => onSelect(api.api_id)}
             aria-pressed={api.api_id === selectedId}
           >
@@ -134,6 +148,7 @@ export function ApiList({ apis, selectedId, onSelect }: ApiListProps) {
               <span className="apirow__name">{api.name}</span>
               <StatusBadge status={api.status} />
             </span>
+            <span className="apirow__say">{read(mode, describeApi(api))}</span>
             <span className="apirow__meta">
               <span>
                 score <strong style={{ color: STATUS_COLOR[api.status] }}>{api.score}</strong>
@@ -142,7 +157,9 @@ export function ApiList({ apis, selectedId, onSelect }: ApiListProps) {
               <span>err {percent(api.error_rate, 1)}</span>
               <span>{compact(api.req_count)} req</span>
               {api.open_alerts > 0 ? (
-                <span className="apirow__alerts">{api.open_alerts} open</span>
+                <span className="apirow__alerts">
+                  {api.open_alerts} {say(mode, 'unexplained', 'open')}
+                </span>
               ) : null}
             </span>
           </button>
@@ -156,15 +173,19 @@ export function ApiList({ apis, selectedId, onSelect }: ApiListProps) {
 export interface EndpointTableProps {
   endpoints: EndpointBreakdownItem[]
   sloMs: number
+  mode: ReadingMode
 }
 
 /**
  * Per-endpoint Golden Signals, slowest first.
  *
  * Percentile columns use tabular figures so the digits line up down the column
- * and an outlier is visible without reading a single number.
+ * and an outlier is visible without reading a single number. In plain mode the
+ * headers name the reader the percentile describes rather than the percentile
+ * itself — the column is the same column either way, but "worst 1 in 100" is
+ * legible to the whole room and "p99" is not.
  */
-export function EndpointTable({ endpoints, sloMs }: EndpointTableProps) {
+export function EndpointTable({ endpoints, sloMs, mode }: EndpointTableProps) {
   if (!endpoints.length) return <Empty message="No endpoint activity in this window yet." />
 
   return (
@@ -174,10 +195,10 @@ export function EndpointTable({ endpoints, sloMs }: EndpointTableProps) {
           <tr>
             <th scope="col">Endpoint</th>
             <th scope="col">Requests</th>
-            <th scope="col">Errors</th>
-            <th scope="col">p50</th>
-            <th scope="col">p95</th>
-            <th scope="col">p99</th>
+            <th scope="col">{say(mode, 'Failed', 'Errors')}</th>
+            <th scope="col">{say(mode, 'Typical', 'p50')}</th>
+            <th scope="col">{say(mode, 'Slow 1 in 20', 'p95')}</th>
+            <th scope="col">{say(mode, 'Worst 1 in 100', 'p99')}</th>
           </tr>
         </thead>
         <tbody>
@@ -204,6 +225,7 @@ export function EndpointTable({ endpoints, sloMs }: EndpointTableProps) {
 /** Props for {@link AlertFeed}. */
 export interface AlertFeedProps {
   alerts: Alert[]
+  mode: ReadingMode
 }
 
 /**
@@ -214,9 +236,17 @@ export interface AlertFeedProps {
  * secondary line, not the headline — it is a heuristic on top of the severity
  * bucket, not a replacement for it.
  */
-export function AlertFeed({ alerts }: AlertFeedProps) {
+export function AlertFeed({ alerts, mode }: AlertFeedProps) {
   if (!alerts.length) {
-    return <Empty message="No anomalies detected. The detectors need ~10 minutes of history." />
+    return (
+      <p className="allclear">
+        {say(
+          mode,
+          'Nothing looks unusual. Every service is behaving the way it normally does.',
+          'No anomalies detected in this window.',
+        )}
+      </p>
+    )
   }
 
   return (
@@ -230,9 +260,17 @@ export function AlertFeed({ alerts }: AlertFeedProps) {
               {alert.resolved_at ? 'resolved' : since(alert.fired_at)}
             </span>
           </div>
-          <p className="alert__why">{alert.explanation}</p>
+          <p className="alert__why">
+            {alert.explanation}{' '}
+            <strong className="alert__state">
+              {alert.resolved_at
+                ? say(mode, 'Over — no action needed.', 'Resolved.')
+                : say(mode, 'Still happening.', 'Firing.')}
+            </strong>
+          </p>
           <p className="alert__band">
-            observed {alert.metric_value} · expected {alert.expected_range}
+            {say(mode, 'measured', 'observed')} {alert.metric_value} ·{' '}
+            {say(mode, 'normal range', 'expected')} {alert.expected_range}
             {alert.confidence != null ? ` · ${percent(alert.confidence * 100, 0)} confidence` : ''}
           </p>
         </li>
@@ -248,7 +286,7 @@ export function AlertFeed({ alerts }: AlertFeedProps) {
  * that cannot beat "same as last time" is not worth deploying, and this panel
  * is where that claim is checkable.
  */
-export function ModelPanel({ metrics }: { metrics: ModelMetrics[] }) {
+export function ModelPanel({ metrics, mode }: { metrics: ModelMetrics[]; mode: ReadingMode }) {
   if (!metrics.length) {
     return <Empty message="No refit has run yet. Metrics appear after the first forecast job." />
   }
@@ -258,11 +296,11 @@ export function ModelPanel({ metrics }: { metrics: ModelMetrics[] }) {
       <table className="table">
         <thead>
           <tr>
-            <th scope="col">Model</th>
-            <th scope="col">MAE</th>
+            <th scope="col">{say(mode, 'Method', 'Model')}</th>
+            <th scope="col">{say(mode, 'Typical miss', 'MAE')}</th>
             <th scope="col">RMSE</th>
-            <th scope="col">MAPE</th>
-            <th scope="col">Fitted</th>
+            <th scope="col">{say(mode, '% off', 'MAPE')}</th>
+            <th scope="col">{say(mode, 'Updated', 'Fitted')}</th>
           </tr>
         </thead>
         <tbody>

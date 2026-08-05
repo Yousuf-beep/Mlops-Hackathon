@@ -9,11 +9,21 @@
 
 name: pulsegrid
 
+# Every service carries the same environment label, and the dashboard's
+# infrastructure panel files services under whichever of development / QA /
+# production it names. One variable moves the whole stack between them —
+# `PULSEGRID_ENV=qa docker compose up -d` and the services appear under QA —
+# and the k8s overlays stamp the equivalent `app.kubernetes.io/environment`,
+# so a cluster deployment is classified by the same rule with no extra config.
+x-environment-labels: &environment-labels
+  pulsegrid.environment: "${PULSEGRID_ENV:-development}"
+
 services:
   db:
     image: postgres:17-alpine
     container_name: pulsegrid-db
     restart: unless-stopped
+    labels: *environment-labels
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-pulsegrid}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pulsegrid_dev_password}
@@ -38,6 +48,12 @@ services:
     image: pulsegrid-api:dev
     container_name: pulsegrid-api
     restart: unless-stopped
+    labels:
+      <<: *environment-labels
+      # This API's root is a 404 by design; /docs is the page a person opening
+      # it actually wants. Nothing in a port mapping can know that, so the
+      # service declares it and the dashboard links straight there.
+      pulsegrid.path: "/docs"
     depends_on:
       db:
         condition: service_healthy
@@ -59,6 +75,26 @@ services:
       # Bind-mount for hot reload. The virtualenv lives at /opt/venv, outside
       # this mount, so it survives.
       - ./backend:/app
+      # The Docker socket, which is what lets the dashboard's infrastructure
+      # panel discover the running stack — its services, their published ports
+      # and the localhost URLs those resolve to — instead of repeating a
+      # hand-maintained list that drifts the moment a port changes.
+      #
+      # `:ro` makes the socket *file* read-only; it does not make the Engine API
+      # read-only, because the Engine has no such mode. What actually bounds
+      # this is the code above it: `app/infra/engine.py` issues two GETs and
+      # nothing else. Still, a socket is a socket — this belongs in a local
+      # stack, not in front of untrusted traffic. Delete this line to turn the
+      # feature off; discovery then degrades to a panel that says the runtime
+      # is unreachable, and nothing else changes.
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    # The API runs as an unprivileged uid (see backend/Dockerfile) and the socket
+    # is group-readable only. Joining the socket's group grants exactly that one
+    # read, without making the process root. Docker Desktop owns the socket
+    # root:root, hence the default of 0; on a Linux host it is usually the
+    # `docker` group — `stat -c '%g' /var/run/docker.sock` gives the number.
+    group_add:
+      - "${DOCKER_SOCKET_GID:-0}"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8000/health', timeout=4)"]
       interval: 15s
@@ -75,6 +111,7 @@ services:
     image: pulsegrid-api:dev
     container_name: pulsegrid-demo-target
     restart: unless-stopped
+    labels: *environment-labels
     command: ["uvicorn", "app.demo_target:app", "--host", "0.0.0.0", "--port", "8001"]
     ports:
       - "8001:8001"
@@ -96,6 +133,7 @@ services:
     image: pulsegrid-web:dev
     container_name: pulsegrid-web
     restart: unless-stopped
+    labels: *environment-labels
     depends_on:
       api:
         condition: service_started
@@ -116,6 +154,7 @@ services:
     image: grafana/k6:latest
     container_name: pulsegrid-loadgen
     restart: unless-stopped
+    labels: *environment-labels
     depends_on:
       api:
         condition: service_healthy

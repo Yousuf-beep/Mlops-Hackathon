@@ -35,6 +35,9 @@ def test_openapi_document_lists_every_router(client: TestClient) -> None:
         "/v1/anomalies/{api_id}",
         "/v1/models/metrics",
         "/v1/stream",
+        "/v1/infra/snapshot",
+        "/v1/infra/containers",
+        "/v1/infra/environments",
     ):
         assert expected in paths, f"{expected} missing from the OpenAPI document"
 

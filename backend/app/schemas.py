@@ -332,6 +332,119 @@ class ModelMetrics(BaseModel):
 
 
 # --------------------------------------------------------------------------- #
+# Infrastructure                                                               #
+# --------------------------------------------------------------------------- #
+
+
+class ContainerPort(BaseModel):
+    """One port a container exposes, published to the host or not."""
+
+    container_port: int = Field(description="Port the process listens on inside the container.")
+    protocol: str = Field(default="tcp", description="Transport protocol, ``tcp`` or ``udp``.")
+    host_port: int | None = Field(
+        default=None,
+        description="Port on the host this is published as. Null when the port is exposed to the "
+        "container network only.",
+    )
+    host_ip: str | None = Field(
+        default=None, description="Host interface the port is bound to, e.g. ``0.0.0.0``."
+    )
+
+
+class ServiceEndpoint(BaseModel):
+    """A published port rendered as an address a person can use."""
+
+    url: str = Field(description="Full address, e.g. ``http://localhost:5173``.")
+    scheme: str = Field(description="Inferred URL scheme, e.g. ``http`` or ``postgresql``.")
+    host: str = Field(description="Hostname the published port resolves on.")
+    host_ip: str = Field(description="Host interface the port is bound to.")
+    host_port: int = Field(description="Port on the host.")
+    container_port: int = Field(description="Port inside the container this maps to.")
+    protocol: str = Field(description="Transport protocol.")
+    path: str = Field(
+        default="",
+        description="Landing path the container declared via ``pulsegrid.path``; empty for the "
+        "plain root. Only ever set on browsable endpoints.",
+    )
+    browsable: bool = Field(description="Whether a browser can open this address.")
+    wildcard_bind: bool = Field(
+        description="Bound to every interface, so the address also resolves on the hostname the "
+        "dashboard itself was loaded from.",
+    )
+    reachable: bool | None = Field(
+        default=None,
+        description="True when the service answered a probe, false when it actively refused, null "
+        "when reachability could not be determined.",
+    )
+
+
+class ContainerRead(BaseModel):
+    """One container, as the dashboard shows it."""
+
+    id: str = Field(description="Short container ID.")
+    name: str = Field(description="Container name.")
+    service: str = Field(description="Compose service name, or the container name.")
+    project: str | None = Field(default=None, description="Compose project the container is in.")
+    image: str = Field(description="Image the container runs.")
+    state: str = Field(description="Docker state: ``running``, ``exited``, ``paused``, ...")
+    health: str = Field(
+        description="Healthcheck verdict: ``healthy``, ``unhealthy``, ``starting``, or ``none`` "
+        "when the image declares no healthcheck.",
+    )
+    environment: str = Field(description="``development``, ``qa`` or ``production``.")
+    created_at: datetime = Field(description="When the container was created.")
+    started_at: datetime | None = Field(default=None, description="When it last started.")
+    ports: list[ContainerPort] = Field(default_factory=list, description="Every exposed port.")
+    endpoints: list[ServiceEndpoint] = Field(
+        default_factory=list, description="Published ports, as addresses."
+    )
+
+
+class WebService(BaseModel):
+    """A browsable endpoint, filed under the environment it belongs to."""
+
+    service: str = Field(description="Compose service name.")
+    container: str = Field(description="Container serving it.")
+    environment: str = Field(description="``development``, ``qa`` or ``production``.")
+    url: str = Field(description="Address to open.")
+    scheme: str = Field(description="URL scheme.")
+    host_port: int = Field(description="Port on the host.")
+    container_port: int = Field(description="Port inside the container.")
+    wildcard_bind: bool = Field(description="Bound to every host interface.")
+    state: str = Field(description="Docker state of the serving container.")
+    health: str = Field(description="Healthcheck verdict of the serving container.")
+    status: str = Field(description="Single-word status for display, health taking precedence.")
+    reachable: bool | None = Field(default=None, description="Probe result; see ServiceEndpoint.")
+
+
+class EnvironmentGroup(BaseModel):
+    """Every web endpoint in one environment."""
+
+    environment: str = Field(description="Canonical environment key.")
+    label: str = Field(description="Display name, e.g. ``Production``.")
+    services: list[WebService] = Field(default_factory=list, description="Endpoints, deduplicated.")
+
+
+class InfraSnapshot(BaseModel):
+    """The full result of a discovery pass over the container runtime."""
+
+    generated_at: datetime = Field(description="When this snapshot was taken.")
+    available: bool = Field(description="Whether the container runtime could be reached at all.")
+    reason: str | None = Field(
+        default=None, description="Why discovery is unavailable, when it is."
+    )
+    scope: str | None = Field(
+        default=None,
+        description="Compose project discovery was restricted to; null means every container.",
+    )
+    host: str = Field(description="Hostname published ports are addressed on.")
+    containers: list[ContainerRead] = Field(default_factory=list)
+    environments: list[EnvironmentGroup] = Field(
+        default_factory=list, description="Always one group per environment, in pipeline order."
+    )
+
+
+# --------------------------------------------------------------------------- #
 # Errors                                                                       #
 # --------------------------------------------------------------------------- #
 

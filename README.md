@@ -32,6 +32,7 @@ all on a single PostgreSQL instance and a single FastAPI process.
 - [Try it — end-to-end curl walkthrough](#try-it--end-to-end-curl-walkthrough)
 - [Dashboard](#dashboard)
 - [API overview](#api-overview)
+- [Runtime infrastructure discovery](#runtime-infrastructure-discovery)
 - [Database design](#database-design)
 - [Testing](#testing)
 - [CI/CD](#cicd)
@@ -300,6 +301,16 @@ passes through unbuffered. Point it elsewhere with `PULSEGRID_API=http://host:po
 | Endpoints | `GET /v1/analytics/endpoints`, slowest first |
 | Detected anomalies | `GET /v1/alerts` — each row leads with the detector's explanation |
 | Model metrics | `GET /v1/models/metrics`, beside the seasonal-naive baseline |
+| Containers | `GET /v1/infra/snapshot` — the live container runtime |
+| Web endpoints by environment | The same snapshot, grouped into development / QA / production |
+
+**Infrastructure discovery.** The last two panels read the Docker Engine
+directly, so they show what is *running* rather than what a manifest says should
+be. No port number, service name or URL of this project appears in the code
+behind them: a service that starts publishing a port shows up on the next tick
+with a working link, one that stops is shown as stopped, and a service nobody
+has heard of appears the moment it is started. See
+[Runtime infrastructure discovery](#runtime-infrastructure-discovery).
 
 **Live updates.** The dashboard subscribes to `/v1/stream` and re-reads the
 per-API panels on each frame. If the stream cannot be established — an
@@ -344,6 +355,9 @@ Every route below is implemented. 🔒 marks the ones that require a bearer toke
 | `GET` | `/v1/anomalies/{api_id}` | — | Detected anomalies with explanations | ✅ |
 | `GET` | `/v1/alerts` | — | Fleet-wide alert feed, newest first | ✅ |
 | `GET` | `/v1/models/metrics` | — | Offline model evaluation metrics | ✅ |
+| `GET` | `/v1/infra/snapshot` | — | Discovered containers **plus** their endpoints by environment | ✅ |
+| `GET` | `/v1/infra/containers` | — | The container inventory alone | ✅ |
+| `GET` | `/v1/infra/environments` | — | Web endpoints grouped by environment | ✅ |
 
 **Conventions.** Everything lives under `/v1` except `/health` (stable probe
 path for orchestrators) and `/proxy/{slug}/{path}` (must mirror upstream paths
@@ -359,6 +373,63 @@ outside a trusted network.
 
 **Demo upstream** (port 8001, ✅ fully implemented): `GET /fast`, `GET /slow`
 (random 100–800 ms), `GET /flaky` (~10% 500s), `GET /health`.
+
+---
+
+## Runtime infrastructure discovery
+
+The dashboard's last two panels answer two questions a hand-maintained list
+always eventually gets wrong: *what is actually running*, and *where do I open
+it*. Both are read from the Docker Engine on every dashboard tick.
+
+**Nothing is hardcoded.** `app/infra/` contains no port number, service name or
+URL belonging to this project. Everything is derived:
+
+| Shown | Derived from |
+| --- | --- |
+| Which containers | The compose project the API container is itself part of, read back through the socket. Override with `INFRA_PROJECT`, or `all` for every container on the host. |
+| Ports | `NetworkSettings.Ports`. Exposed-but-unpublished ports are kept and marked; a dual-stack (IPv4 + IPv6) binding is collapsed to the one address it is. |
+| Scheme | The *container* port, against the IANA registry — 5432 is PostgreSQL wherever it is published. Anything unregistered is assumed HTTP. |
+| State and health | `State.Status` and `State.Health.Status`, kept as separate columns: an image with no healthcheck is not an unhealthy image. |
+| Environment | An explicit label, then the container's own `ENV`, then the project name. |
+| Reachability | A probe over the *container* network to the same path the link opens. |
+
+**Three labels a service may set** (all optional):
+
+| Label | Effect |
+| --- | --- |
+| `pulsegrid.environment` | Files the service under `development`, `qa` or `production`. `staging`/`uat` group with QA. `app.kubernetes.io/environment` — which `k8s/overlays/*` already stamp — is read too, so a cluster deployment classifies itself. |
+| `pulsegrid.path` | Landing path for the link, e.g. `/docs`. Nothing in a port mapping can know that this API's root is a 404, so the service says so. |
+| `pulsegrid.scheme` | Overrides the inferred scheme. |
+
+`docker-compose.yml` sets the first from `${PULSEGRID_ENV:-development}`, so
+`PULSEGRID_ENV=qa docker compose up -d` moves the whole stack to the QA tab.
+
+**Links are never guessed.** A published port is only rendered as a link when
+its scheme is browsable; a database is shown as a connection string you can
+copy. Ports bound to every interface are re-hosted client-side onto the origin
+the dashboard was loaded from, so the links work when the page is being read
+from another machine. Ports bound to one specific IP are left exactly as
+discovered.
+
+**The probe is three-valued, and the third value is the point.** *Answering*
+means the service returned an HTTP response — any status, 404 included. *Not
+answering* means every attempt was actively refused, which is a real fault. A
+name that does not resolve, or a timeout, reports **nothing at all**: "I could
+not check" and "it is broken" are different claims, and a panel that confuses
+them condemns working links the first time it runs on an unusual network.
+
+**Access.** Discovery needs the Docker socket, which `docker-compose.yml` mounts
+into the API. `:ro` makes the socket *file* read-only — it does not make the
+Engine API read-only, because the Engine has no such mode. What bounds this is
+`app/infra/engine.py`, which issues two GETs and nothing else, and the routes
+above, which are reads. Still: this belongs in a local stack, not in front of
+untrusted traffic.
+
+Delete the socket mount to switch the feature off. Discovery then degrades to a
+panel that names the reason it is empty, and nothing else in the dashboard
+changes — the same thing that happens on a Kubernetes deployment, where there is
+no socket to mount.
 
 ---
 
@@ -503,10 +574,11 @@ pulsegrid/
 │   │   ├── schemas.py        # request/response models
 │   │   ├── demo_target.py    # the synthetic upstream (/fast, /slow, /flaky)
 │   │   ├── auth/             # security.py (hashing, JWT), dependencies.py (guards)
-│   │   ├── routers/          # auth, registry, ingest, analytics, ml, stream
+│   │   ├── routers/          # auth, registry, ingest, analytics, ml, stream, infra
 │   │   ├── jobs/scheduler.py # APScheduler instance + register_jobs()
 │   │   ├── analytics.py      # every Golden-Signal query over metric_rollup
 │   │   ├── bootstrap.py      # first-boot demo provisioning
+│   │   ├── infra/            # Docker Engine client + container/endpoint discovery
 │   │   └── ml/               # forecasting.py, anomaly.py, metrics_store.py
 │   ├── alembic/              # env.py + the initial migration
 │   ├── tests/                # pytest suite

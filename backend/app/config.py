@@ -45,6 +45,25 @@ class Settings(BaseSettings):
         ANOMALY_WINDOW_MINUTES: Rollup window each anomaly run scores.
         FORECAST_INTERVAL_SECONDS: Period of the forecast refit job.
         FORECAST_HORIZON_MINUTES: How far ahead each refit predicts.
+        DOCKER_HOST: Where the Docker Engine API lives. Accepts the same forms
+            the Docker CLI does (``unix://``, ``tcp://``) as well as a bare
+            socket path. Container discovery is disabled cleanly when it cannot
+            be reached, so leaving this at its default costs nothing.
+        INFRA_PROJECT: Compose project to restrict discovery to. Empty — the
+            default — means "ask the daemon which project this container is in",
+            so the panel scopes itself with nothing configured. ``all`` shows
+            every container on the host.
+        INFRA_PUBLIC_HOST: Hostname discovered ports are addressed on. Only used
+            when a port is bound to a specific interface; wildcard binds are
+            re-hosted by the dashboard onto whatever origin it was loaded from.
+        INFRA_CACHE_SECONDS: How long a discovery pass is reused. Short enough
+            that a container starting shows up within a dashboard tick, long
+            enough that many open tabs do not hammer the Docker socket.
+        INFRA_ENGINE_TIMEOUT_SECONDS: Per-request timeout against the Engine.
+        INFRA_PROBE_ENABLED: Confirm discovered HTTP endpoints actually answer,
+            over the container network. Turn off on a host where outbound
+            requests between containers are blocked.
+        INFRA_PROBE_TIMEOUT_SECONDS: Per-probe timeout.
     """
 
     model_config = SettingsConfigDict(
@@ -93,6 +112,15 @@ class Settings(BaseSettings):
     ANOMALY_WINDOW_MINUTES: int = 120
     FORECAST_INTERVAL_SECONDS: int = 45
     FORECAST_HORIZON_MINUTES: int = 60
+
+    # --- runtime infrastructure discovery ------------------------------------
+    DOCKER_HOST: str = "unix:///var/run/docker.sock"
+    INFRA_PROJECT: str = ""
+    INFRA_PUBLIC_HOST: str = "localhost"
+    INFRA_CACHE_SECONDS: float = 3.0
+    INFRA_ENGINE_TIMEOUT_SECONDS: float = 5.0
+    INFRA_PROBE_ENABLED: bool = True
+    INFRA_PROBE_TIMEOUT_SECONDS: float = 1.5
 
 
 @lru_cache(maxsize=1)

@@ -3,61 +3,143 @@
  */
 
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { motion, useReducedMotion } from 'motion/react'
 
 import { percent, STATUS_LABEL } from '../format'
 import { SEVERITY_COLOR, STATUS_COLOR } from '../theme'
+
+/** Columns a panel may claim on the twelve-column bento grid. */
+export type PanelSpan = 4 | 5 | 6 | 7 | 8 | 12
 
 /** Props for {@link Panel}. */
 export interface PanelProps {
   title: string
   hint?: string
+  /**
+   * One sentence above the body saying what this panel shows, with this
+   * window's numbers already in it.
+   */
+  lede?: string
+  /** One sentence below the body saying what its current shape means. */
+  readout?: string
   actions?: ReactNode
   children: ReactNode
-  /** Span two columns of the dashboard grid. */
-  wide?: boolean
+  /** Columns claimed on the bento grid. Defaults to a third of the width. */
+  span?: PanelSpan
+  /** Claim two grid rows, for a panel whose content is a long list. */
+  tall?: boolean
+  /**
+   * Position in the reveal order. Panels enter on a stagger keyed to this, so
+   * the eye is walked down the page rather than shown all of it at once.
+   */
+  index?: number
 }
 
+/** Per-panel offset of the entrance stagger, in seconds. */
+const STAGGER_S = 0.045
+
+/** Stagger offsets past this index all fire together, so nothing feels late. */
+const STAGGER_CAP = 8
+
 /**
- * A titled card. Every chart and table on the dashboard sits in one, so the
- * page reads as a set of answers rather than a wall of plots.
+ * A titled card, and the unit the whole dashboard is built from.
+ *
+ * Beyond the title it carries two optional sentences — a `lede` above the body
+ * and a `readout` below it. They are what turns a chart from something you have
+ * to interpret into something that has already been read to you: the lede says
+ * what is plotted with the real numbers in it, the readout says what the shape
+ * currently means. Both are optional, so an engineer-mode panel can drop back
+ * to bare instrumentation.
+ *
+ * Cards enter on a stagger derived from `index`, which is the one piece of
+ * motion on the page: a bento grid that appears all at once gives the eye no
+ * order to follow, and this dashboard has a triage order worth following.
  */
-export function Panel({ title, hint, actions, children, wide }: PanelProps) {
+export function Panel({
+  title,
+  hint,
+  lede,
+  readout,
+  actions,
+  children,
+  span = 4,
+  tall,
+  index = 0,
+}: PanelProps) {
+  const reduced = useReducedMotion()
+  const classes = ['panel', `panel--span-${span}`]
+  if (tall) classes.push('panel--tall')
+
   return (
-    <section className={wide ? 'panel panel--wide' : 'panel'}>
+    <motion.section
+      className={classes.join(' ')}
+      // Spelled out rather than `initial={false}`: the resting state of a
+      // panel that never scrolls into view has to be *visible*, and a reader
+      // who asked for less motion must not be the one who loses content.
+      initial={reduced ? { opacity: 1, y: 0, scale: 1 } : { opacity: 0, y: 22, scale: 0.985 }}
+      whileInView={{ opacity: 1, y: 0, scale: 1 }}
+      viewport={{ once: true, amount: 0.12 }}
+      transition={{
+        duration: reduced ? 0 : 0.55,
+        ease: [0.16, 1, 0.3, 1],
+        delay: reduced ? 0 : Math.min(index, STAGGER_CAP) * STAGGER_S,
+      }}
+    >
       <header className="panel__head">
-        <div>
+        <div className="panel__title">
           <h2>{title}</h2>
           {hint ? <p className="panel__hint">{hint}</p> : null}
         </div>
         {actions ? <div className="panel__actions">{actions}</div> : null}
       </header>
+      {lede ? <p className="panel__lede">{lede}</p> : null}
       <div className="panel__body">{children}</div>
-    </section>
+      {readout ? (
+        <p className="panel__readout">
+          <span className="panel__readoutKey">Reading it</span>
+          {readout}
+        </p>
+      ) : null}
+    </motion.section>
   )
 }
 
 /** Props for {@link StatTile}. */
 export interface StatTileProps {
+  /** In plain mode this is a question; in engineer mode, the measure's name. */
   label: string
   value: string
   sub?: string
+  /**
+   * The measure this tile reports, in the language the API uses. Anchors a
+   * plain-English question to the thing an operator would go and query.
+   */
+  tag?: string
   /** Tints the value when the tile is reporting something bad. */
   tone?: 'neutral' | 'good' | 'warning' | 'critical'
+  /** Position in the reveal order, matching {@link Panel}. */
+  index?: number
 }
 
 /** How long the change highlight stays on a tile after its value updates. */
 const FLASH_MS = 600
 
 /**
- * A single headline number. Deliberately not a chart: one value over one window
- * has no shape worth plotting.
+ * A single headline number, framed by the question it answers.
+ *
+ * Deliberately not a chart: one value over one window has no shape worth
+ * plotting. In plain mode the label carries the whole question ("How many of
+ * those failed?"), because a number under a noun is a fact while a number under
+ * a question is an answer — and an answer is what someone at the back of a room
+ * can actually use.
  *
  * Briefly highlights itself whenever `value` changes so a live SSE-driven tile
  * reads as *updating* rather than the page having silently refreshed under it.
  */
-export function StatTile({ label, value, sub, tone = 'neutral' }: StatTileProps) {
+export function StatTile({ label, value, sub, tag, tone = 'neutral', index = 0 }: StatTileProps) {
   const previous = useRef(value)
   const [flash, setFlash] = useState(false)
+  const reduced = useReducedMotion()
 
   useEffect(() => {
     if (previous.current === value) return
@@ -68,11 +150,21 @@ export function StatTile({ label, value, sub, tone = 'neutral' }: StatTileProps)
   }, [value])
 
   return (
-    <div className={flash ? `tile tile--${tone} tile--flash` : `tile tile--${tone}`}>
+    <motion.div
+      className={flash ? `tile tile--${tone} tile--flash` : `tile tile--${tone}`}
+      initial={reduced ? { opacity: 1, y: 0 } : { opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{
+        duration: reduced ? 0 : 0.5,
+        ease: [0.16, 1, 0.3, 1],
+        delay: reduced ? 0 : index * 0.05,
+      }}
+    >
       <span className="tile__label">{label}</span>
       <strong className="tile__value">{value}</strong>
       <span className="tile__sub">{sub ?? ' '}</span>
-    </div>
+      {tag ? <span className="tile__tag">{tag}</span> : null}
+    </motion.div>
   )
 }
 

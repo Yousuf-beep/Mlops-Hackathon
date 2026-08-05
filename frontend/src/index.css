@@ -20,6 +20,10 @@
   --text: #0b0b0b;
   --text-2: #52514e;
   --muted: #78766f;
+  /* Placeholders are body text for contrast purposes: --muted only reaches
+     4.1:1 on --surface-2, so form hints get their own step that clears 4.5:1
+     without reading as a filled-in value. */
+  --placeholder: #6b6a64;
 
   --accent: #2a78d6;
   --accent-soft: rgba(42, 120, 214, 0.1);
@@ -35,7 +39,10 @@
   --mono: ui-monospace, 'Cascadia Mono', Consolas, monospace;
 
   font-family: var(--sans);
-  font-size: 15px;
+  /* The dashboard is read on a projector as often as on a laptop, and every
+     size below is a multiple of this one. A step up here is worth more than
+     any per-element tuning further down. */
+  font-size: 16px;
   line-height: 1.5;
   color: var(--text);
   background: var(--plane);
@@ -58,6 +65,7 @@
     --text: #f3f4f6;
     --text-2: #c8cad2;
     --muted: #8d8f9a;
+    --placeholder: #8d8f9a;
 
     --accent: #3987e5;
     --accent-soft: rgba(57, 135, 229, 0.16);
@@ -83,6 +91,7 @@
   --text: #f3f4f6;
   --text-2: #c8cad2;
   --muted: #8d8f9a;
+  --placeholder: #8d8f9a;
 
   --accent: #3987e5;
   --accent-soft: rgba(57, 135, 229, 0.16);
